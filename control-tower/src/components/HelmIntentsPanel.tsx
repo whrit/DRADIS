@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -32,88 +32,130 @@
 // have resolved against how many are needed; below that line everything is
 // recorded and nothing is displayed.
 
-import { useCallback, useState } from 'react';
-import useSWR from 'swr';
-import type { HelmIntent } from '@/lib/types';
+import { useCallback, useState } from "react";
+import useSWR from "swr";
+import type { HelmIntent } from "@/lib/types";
 import {
-  acknowledgeHelmIntent, cancelHelmIntent, getHelmSummary, HelmApiError, listHelmIntents, scoreHelmCritique,
-} from '@/lib/api';
+  acknowledgeHelmIntent,
+  cancelHelmIntent,
+  getHelmSummary,
+  HelmApiError,
+  listHelmIntents,
+  scoreHelmCritique,
+} from "@/lib/api";
 
 const STATUS_COLOR: Record<string, string> = {
-  proposed: 'text-gray-300 border-gray-600',
-  acknowledged: 'text-teal-200 border-teal-500/40',
-  working: 'text-amber-200 border-amber-500/40',
-  filled: 'text-green-200 border-green-500/40',
-  partial: 'text-green-200 border-green-500/40',
-  missed: 'text-red-200 border-red-500/40',
-  closed: 'text-gray-400 border-gray-700',
-  superseded: 'text-gray-500 border-gray-700',
+  proposed: "text-gray-300 border-gray-600",
+  acknowledged: "text-teal-200 border-teal-500/40",
+  working: "text-amber-200 border-amber-500/40",
+  filled: "text-green-200 border-green-500/40",
+  partial: "text-green-200 border-green-500/40",
+  missed: "text-red-200 border-red-500/40",
+  closed: "text-gray-400 border-gray-700",
+  superseded: "text-gray-500 border-gray-700",
 };
 
-const IN_FLIGHT = new Set(['working', 'filled', 'partial']);
+const IN_FLIGHT = new Set(["working", "filled", "partial"]);
 
 /** Nothing more will happen to it. Matches `IntentStatus::is_terminal` in Rust. */
-const isTerminal = (status: string) => status === 'closed' || status === 'superseded';
+const isTerminal = (status: string) => status === "closed" || status === "superseded";
 
-function IntentRow({ intent, showSquadron, onChanged }: { intent: HelmIntent; showSquadron: boolean; onChanged: () => void }) {
+function IntentRow({
+  intent,
+  showSquadron,
+  onChanged,
+}: {
+  intent: HelmIntent;
+  showSquadron: boolean;
+  onChanged: () => void;
+}) {
   const [read, setRead] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const critiqueUnavailable = intent.critique?.startsWith('unavailable:') ?? false;
+  const critiqueUnavailable = intent.critique?.startsWith("unavailable:") ?? false;
   const inFlight = IN_FLIGHT.has(intent.status);
   const terminal = isTerminal(intent.status);
 
-  const run = useCallback(async (f: () => Promise<unknown>) => {
-    setBusy(true); setNote(null);
-    try { await f(); onChanged(); }
-    catch (e) {
-      if (e instanceof HelmApiError) {
-        setNote(e.violations.length > 0 ? e.violations.join(' · ') : e.message);
-      } else {
-        setNote(e instanceof Error ? e.message : String(e));
+  const run = useCallback(
+    async (f: () => Promise<unknown>) => {
+      setBusy(true);
+      setNote(null);
+      try {
+        await f();
+        onChanged();
+      } catch (e) {
+        if (e instanceof HelmApiError) {
+          setNote(e.violations.length > 0 ? e.violations.join(" · ") : e.message);
+        } else {
+          setNote(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        setBusy(false);
       }
-    } finally { setBusy(false); }
-  }, [onChanged]);
+    },
+    [onChanged],
+  );
 
   return (
-    <div className="rounded border border-[#1e1e32] bg-[#0a0a14] px-3 py-2.5 space-y-2">
+    <div className="rounded border border-surface-border bg-surface-base px-3 py-2.5 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-mono text-gray-200">#{intent.id}</span>
-          <span className={`text-[10px] font-mono border rounded px-1.5 py-0.5 ${STATUS_COLOR[intent.status] ?? 'text-gray-300 border-gray-600'}`}>{intent.status}</span>
+          <span
+            className={`text-3xs font-mono border rounded px-1.5 py-0.5 ${STATUS_COLOR[intent.status] ?? "text-gray-300 border-gray-600"}`}
+          >
+            {intent.status}
+          </span>
           <span className="text-xs font-mono text-gray-300">{intent.side}</span>
-          <span className="text-xs font-mono text-gray-500">conf {(intent.first.confidence * 100).toFixed(0)}% · {intent.first.horizon} · v{intent.current_version}</span>
-          {intent.ghost && <span className="text-[10px] font-mono text-gray-500">ghost</span>}
+          <span className="text-xs font-mono text-gray-500">
+            conf {(intent.first.confidence * 100).toFixed(0)}% · {intent.first.horizon} · v
+            {intent.current_version}
+          </span>
+          {intent.ghost && <span className="text-3xs font-mono text-gray-500">ghost</span>}
         </div>
-        <span className="text-[10px] font-mono text-gray-500 shrink-0">{new Date(intent.created_at).toLocaleString()}</span>
+        <span className="text-3xs font-mono text-gray-500 shrink-0">
+          {new Date(intent.created_at).toLocaleString()}
+        </span>
       </div>
       {showSquadron && (
-        <p className="text-[11px] font-mono text-teal-300/80 truncate" title={intent.market_name}>
+        <p className="text-2xs font-mono text-teal-300/80 truncate" title={intent.market_name}>
           {intent.squadron_id} · {intent.market_name}
         </p>
       )}
       <p className="text-xs font-mono text-gray-300 whitespace-pre-wrap">{intent.first.thesis}</p>
-      <p className="text-[11px] font-mono text-gray-500">Wrong if: {intent.first.falsification}</p>
-      {intent.status_detail && <p className="text-[11px] font-mono text-gray-500">{intent.status_detail}</p>}
-      {intent.fee_verdict && <p className="text-[11px] font-mono text-amber-200">Fee: {intent.fee_verdict}</p>}
+      <p className="text-2xs font-mono text-gray-500">Wrong if: {intent.first.falsification}</p>
+      {intent.status_detail && (
+        <p className="text-2xs font-mono text-gray-500">{intent.status_detail}</p>
+      )}
+      {intent.fee_verdict && (
+        <p className="text-2xs font-mono text-amber-200">Fee: {intent.fee_verdict}</p>
+      )}
       <div className="rounded border border-indigo-500/20 bg-indigo-500/5 px-2 py-1.5">
-        <p className="text-[10px] font-mono uppercase tracking-wide text-indigo-300">Critique</p>
-        {intent.critique == null
-          ? <p className="text-[11px] font-mono text-gray-500">{intent.critique_requested_at ? 'pending…' : 'not requested'}</p>
-          : <p className={`text-[11px] font-mono whitespace-pre-wrap ${critiqueUnavailable ? 'text-gray-500' : 'text-indigo-100'}`}>{intent.critique}</p>}
+        <p className="text-3xs font-mono uppercase tracking-wide text-indigo-300">Critique</p>
+        {intent.critique == null ? (
+          <p className="text-2xs font-mono text-gray-500">
+            {intent.critique_requested_at ? "pending…" : "not requested"}
+          </p>
+        ) : (
+          <p
+            className={`text-2xs font-mono whitespace-pre-wrap ${critiqueUnavailable ? "text-gray-500" : "text-indigo-100"}`}
+          >
+            {intent.critique}
+          </p>
+        )}
       </div>
-      {note && <p className="text-[11px] font-mono text-amber-300">{note}</p>}
+      {note && <p className="text-2xs font-mono text-amber-300">{note}</p>}
       <div className="flex flex-wrap items-center gap-2">
-        {intent.status === 'proposed' && (
+        {intent.status === "proposed" && (
           <>
-            <label className="flex items-center gap-1.5 text-[11px] font-mono text-gray-300">
+            <label className="flex items-center gap-1.5 text-2xs font-mono text-gray-300">
               <input type="checkbox" checked={read} onChange={(e) => setRead(e.target.checked)} />
               read the critique
             </label>
             <button
               disabled={busy || !read}
               onClick={() => run(() => acknowledgeHelmIntent(intent.id))}
-              className="text-[11px] font-mono border border-teal-500/40 bg-teal-500/10 text-teal-200 rounded px-2 py-1 hover:bg-teal-500/20 disabled:opacity-40"
+              className="text-2xs font-mono border border-teal-500/40 bg-teal-500/10 text-teal-200 rounded px-2 py-1 hover:bg-teal-500/20 disabled:opacity-40"
             >
               Acknowledge and enter
             </button>
@@ -122,29 +164,58 @@ function IntentRow({ intent, showSquadron, onChanged }: { intent: HelmIntent; sh
         {!terminal && !inFlight && (
           <button
             disabled={busy}
-            onClick={() => run(() => cancelHelmIntent(intent.id, 'cancelled from the Control Tower'))}
-            className="text-[11px] font-mono border border-red-500/30 bg-red-500/10 text-red-200 rounded px-2 py-1 hover:bg-red-500/20 disabled:opacity-40"
+            onClick={() =>
+              run(() => cancelHelmIntent(intent.id, "cancelled from the Control Tower"))
+            }
+            className="text-2xs font-mono border border-red-500/30 bg-red-500/10 text-red-200 rounded px-2 py-1 hover:bg-red-500/20 disabled:opacity-40"
           >
             Cancel
           </button>
         )}
         {inFlight && (
-          <span className="text-[10px] font-mono text-gray-500">
-            held: the position leaves by its posture, by RTB, or by settlement; the intent closes when it does
+          <span className="text-3xs font-mono text-gray-500">
+            held: the position leaves by its posture, by RTB, or by settlement; the intent closes
+            when it does
           </span>
         )}
         {terminal && !intent.critique_outcome && intent.critique && !critiqueUnavailable && (
           <>
-            <span className="text-[10px] font-mono text-gray-500">Did the critique name what happened?</span>
-            <button disabled={busy} onClick={() => run(() => scoreHelmCritique(intent.id, 'named_it'))} className="text-[11px] font-mono border border-[#1e1e32] rounded px-2 py-1 text-gray-300 hover:bg-white/[0.03] disabled:opacity-40">named it</button>
-            <button disabled={busy} onClick={() => run(() => scoreHelmCritique(intent.id, 'missed_it'))} className="text-[11px] font-mono border border-[#1e1e32] rounded px-2 py-1 text-gray-300 hover:bg-white/[0.03] disabled:opacity-40">missed it</button>
+            <span className="text-3xs font-mono text-gray-500">
+              Did the critique name what happened?
+            </span>
+            <button
+              disabled={busy}
+              onClick={() => run(() => scoreHelmCritique(intent.id, "named_it"))}
+              className="text-2xs font-mono border border-surface-border rounded px-2 py-1 text-gray-300 hover:bg-white/[0.03] disabled:opacity-40"
+            >
+              named it
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => run(() => scoreHelmCritique(intent.id, "missed_it"))}
+              className="text-2xs font-mono border border-surface-border rounded px-2 py-1 text-gray-300 hover:bg-white/[0.03] disabled:opacity-40"
+            >
+              missed it
+            </button>
           </>
         )}
         {terminal && !intent.critique_outcome && (!intent.critique || critiqueUnavailable) && (
-          <button disabled={busy} onClick={() => run(() => scoreHelmCritique(intent.id, 'no_critique'))} className="text-[11px] font-mono border border-[#1e1e32] rounded px-2 py-1 text-gray-500 hover:bg-white/[0.03] disabled:opacity-40">record: no critique</button>
+          <button
+            disabled={busy}
+            onClick={() => run(() => scoreHelmCritique(intent.id, "no_critique"))}
+            className="text-2xs font-mono border border-surface-border rounded px-2 py-1 text-gray-500 hover:bg-white/[0.03] disabled:opacity-40"
+          >
+            record: no critique
+          </button>
         )}
-        {intent.critique_outcome && <span className="text-[10px] font-mono text-gray-500">critique scored: {intent.critique_outcome}</span>}
-        {intent.close_reason && <span className="text-[10px] font-mono text-gray-500">closed: {intent.close_reason}</span>}
+        {intent.critique_outcome && (
+          <span className="text-3xs font-mono text-gray-500">
+            critique scored: {intent.critique_outcome}
+          </span>
+        )}
+        {intent.close_reason && (
+          <span className="text-3xs font-mono text-gray-500">closed: {intent.close_reason}</span>
+        )}
       </div>
     </div>
   );
@@ -160,15 +231,13 @@ function IntentRow({ intent, showSquadron, onChanged }: { intent: HelmIntent; sh
  * Renders nothing while flat.
  */
 export function HelmLiveLine() {
-  const { data: intents } = useSWR(
-    ['helm-intents', '*'],
-    () => listHelmIntents(undefined, true),
-    { refreshInterval: 10_000 },
-  );
+  const { data: intents } = useSWR(["helm-intents", "*"], () => listHelmIntents(undefined, true), {
+    refreshInterval: 10_000,
+  });
   const live = intents?.filter((i) => !isTerminal(i.status)) ?? [];
   if (live.length === 0) return null;
 
-  const held = live.filter((i) => i.status === 'filled' || i.status === 'partial').length;
+  const held = live.filter((i) => i.status === "filled" || i.status === "partial").length;
 
   return (
     <a
@@ -176,11 +245,11 @@ export function HelmLiveLine() {
       className="flex items-center gap-2 card px-3 py-2 border border-teal-500/30 bg-teal-500/[0.04] hover:bg-teal-500/[0.08] transition-colors"
     >
       <span className="text-xs">🧭</span>
-      <span className="text-[11px] font-mono text-teal-200">
-        {live.length} Helm intent{live.length === 1 ? '' : 's'} live
+      <span className="text-2xs font-mono text-teal-200">
+        {live.length} Helm intent{live.length === 1 ? "" : "s"} live
         {held > 0 && <span className="text-teal-400"> · {held} holding a position</span>}
       </span>
-      <span className="text-[10px] font-mono text-gray-500 ml-auto">view the record →</span>
+      <span className="text-3xs font-mono text-gray-500 ml-auto">view the record →</span>
     </a>
   );
 }
@@ -197,7 +266,7 @@ interface Props {
    * belong on different screens, so the Helm view asks for each separately.
    * Omit for both, as a squadron's own page wants.
    */
-  show?: 'live' | 'resolved';
+  show?: "live" | "resolved";
   /** Render the rows bare, for a page that supplies its own heading. */
   bare?: boolean;
   /** Shown in place of the stock empty line. */
@@ -205,7 +274,11 @@ interface Props {
 }
 
 export default function HelmIntentsPanel({
-  squadronId, hideWhenEmpty = false, show, bare = false, emptyText,
+  squadronId,
+  hideWhenEmpty = false,
+  show,
+  bare = false,
+  emptyText,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
 
@@ -223,22 +296,28 @@ export default function HelmIntentsPanel({
   // tenth of the rate rather than pulling every intent on the instance every
   // three seconds for a panel nobody has opened.
   const { data: intents, mutate } = useSWR(
-    ['helm-intents', squadronId ?? '*'],
+    ["helm-intents", squadronId ?? "*"],
     () => listHelmIntents(squadronId, true),
     { refreshInterval: open ? 3_000 : 30_000 },
   );
-  const { data: summary, mutate: mutateSummary } = useSWR('helm-summary', getHelmSummary, { refreshInterval: open ? 10_000 : 60_000 });
-  const refresh = useCallback(() => { mutate(); mutateSummary(); }, [mutate, mutateSummary]);
+  const { data: summary, mutate: mutateSummary } = useSWR("helm-summary", getHelmSummary, {
+    refreshInterval: open ? 10_000 : 60_000,
+  });
+  const refresh = useCallback(() => {
+    mutate();
+    mutateSummary();
+  }, [mutate, mutateSummary]);
 
   // Same definition of terminal as `IntentRow` uses.
-  const shown = !intents ? undefined : intents.filter((i) =>
-    show === 'live' ? !isTerminal(i.status)
-    : show === 'resolved' ? isTerminal(i.status)
-    : true);
+  const shown = !intents
+    ? undefined
+    : intents.filter((i) =>
+        show === "live" ? !isTerminal(i.status) : show === "resolved" ? isTerminal(i.status) : true,
+      );
 
   if (hideWhenEmpty && !squadronId && shown && shown.length === 0) return null;
 
-  const title = squadronId ? '🧭 Helm intents' : '🧭 Helm — all intents';
+  const title = squadronId ? "🧭 Helm intents" : "🧭 Helm — all intents";
 
   // Live ones called out in the ribbon: that is the number worth seeing closed.
   const live = intents?.filter((i) => !isTerminal(i.status)).length ?? 0;
@@ -248,17 +327,19 @@ export default function HelmIntentsPanel({
       <div className="space-y-3">
         {!shown && <p className="text-xs font-mono text-gray-500">Loading…</p>}
         {shown && shown.length === 0 && (
-          <p className="text-xs font-mono text-gray-500">{emptyText ?? 'Nothing here yet.'}</p>
+          <p className="text-xs font-mono text-gray-500">{emptyText ?? "Nothing here yet."}</p>
         )}
-        {shown?.map((i) => <IntentRow key={i.id} intent={i} showSquadron={!squadronId} onChanged={refresh} />)}
+        {shown?.map((i) => (
+          <IntentRow key={i.id} intent={i} showSquadron={!squadronId} onChanged={refresh} />
+        ))}
       </div>
     );
   }
 
   return (
-    <div className="card p-4 border border-teal-500/20 bg-[#0d0d1a] space-y-3">
+    <div className="card p-4 border border-teal-500/20 bg-surface-sunken space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className={collapsible ? 'min-w-0 flex-1' : ''}>
+        <div className={collapsible ? "min-w-0 flex-1" : ""}>
           {collapsible ? (
             <button
               type="button"
@@ -266,10 +347,14 @@ export default function HelmIntentsPanel({
               aria-expanded={expanded}
               className="flex items-center gap-2 text-left w-full group"
             >
-              <span className="text-[10px] font-mono text-teal-500/70 w-3 shrink-0">{expanded ? '▾' : '▸'}</span>
-              <h3 className="text-xs font-mono uppercase tracking-wide text-teal-300 group-hover:text-teal-200">{title}</h3>
-              <span className="text-[10px] font-mono text-gray-500">
-                {intents ? `${intents.length} total` : '…'}
+              <span className="text-3xs font-mono text-teal-500/70 w-3 shrink-0">
+                {expanded ? "▾" : "▸"}
+              </span>
+              <h3 className="text-xs font-mono uppercase tracking-wide text-teal-300 group-hover:text-teal-200">
+                {title}
+              </h3>
+              <span className="text-3xs font-mono text-gray-500">
+                {intents ? `${intents.length} total` : "…"}
                 {live > 0 && <span className="text-teal-300"> · {live} live</span>}
               </span>
             </button>
@@ -277,27 +362,35 @@ export default function HelmIntentsPanel({
             <h3 className="text-xs font-mono uppercase tracking-wide text-teal-300">{title}</h3>
           )}
           {!squadronId && expanded && (
-            <p className="text-[10px] font-mono text-gray-500 mt-1 ml-5">
-              Every intent on this instance, whether or not its squadron still exists. Intents outlive
-              their squadrons: the record and the critique scoring live here.
+            <p className="text-3xs font-mono text-gray-500 mt-1 ml-5">
+              Every intent on this instance, whether or not its squadron still exists. Intents
+              outlive their squadrons: the record and the critique scoring live here.
             </p>
           )}
         </div>
         {summary && open && (
-          <span className="text-[10px] font-mono text-gray-500 shrink-0" title="Everything is recorded; a calibration figure is shown only once enough intents have resolved.">
-            {summary.resolved} resolved of {summary.calibration_min_resolved} needed before any calibration is shown
+          <span
+            className="text-3xs font-mono text-gray-500 shrink-0"
+            title="Everything is recorded; a calibration figure is shown only once enough intents have resolved."
+          >
+            {summary.resolved} resolved of {summary.calibration_min_resolved} needed before any
+            calibration is shown
           </span>
         )}
       </div>
       {open && !shown && <p className="text-xs font-mono text-gray-500">Loading…</p>}
       {open && shown && shown.length === 0 && (
         <p className="text-xs font-mono text-gray-500">
-          {emptyText ?? (squadronId
-            ? 'No intent yet. The viper reports "awaiting operator intent" until one is acknowledged.'
-            : 'No Helm intents yet. "Take the Helm" above creates one.')}
+          {emptyText ??
+            (squadronId
+              ? 'No intent yet. The viper reports "awaiting operator intent" until one is acknowledged.'
+              : 'No Helm intents yet. "Take the Helm" above creates one.')}
         </p>
       )}
-      {open && shown?.map((i) => <IntentRow key={i.id} intent={i} showSquadron={!squadronId} onChanged={refresh} />)}
+      {open &&
+        shown?.map((i) => (
+          <IntentRow key={i.id} intent={i} showSquadron={!squadronId} onChanged={refresh} />
+        ))}
     </div>
   );
 }

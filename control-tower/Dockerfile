@@ -1,13 +1,18 @@
 # ── Stage 1: install dependencies ─────────────────────────────────────────────
+# pnpm comes from corepack at the version pinned in package.json `packageManager`.
 FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # ── Stage 2: build the Next.js app ────────────────────────────────────────────
 FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -31,7 +36,7 @@ RUN mkdir -p /app/public
 ARG NEXT_PUBLIC_DEMO_MODE=false
 ENV NEXT_PUBLIC_DEMO_MODE=$NEXT_PUBLIC_DEMO_MODE
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+RUN pnpm run build
 
 # ── Stage 3: minimal production runner ────────────────────────────────────────
 FROM node:20-alpine AS runner

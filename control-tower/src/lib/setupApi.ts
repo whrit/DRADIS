@@ -22,19 +22,19 @@
  * Authorization header to the engine.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
-const TOKEN_KEY = 'dradis_admin_token';
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const TOKEN_KEY = "dradis_admin_token";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 /** Venue compiled into the running engine binary — mirrors `build_venue()`. */
-export type VenueId = 'intl' | 'us' | 'kalshi';
+export type VenueId = "intl" | "us" | "kalshi";
 
 /**
  * How this instance was distributed. Drives whether the risk gate shows
  * commercial support contacts or the community "no individual support" wording.
  */
-export type Edition = 'community' | 'marketplace';
+export type Edition = "community" | "marketplace";
 
 export interface SetupStatus {
   venue: VenueId;
@@ -71,23 +71,23 @@ export interface SetupStatus {
 export interface CredentialInfo {
   key: string;
   label: string;
-  scope: VenueId | 'shared';
+  scope: VenueId | "shared";
   /** Which Setup panel owns this key: core venue, Raptor signal, or integration. */
-  panel: 'venue' | 'raptor' | 'integration';
+  panel: "venue" | "raptor" | "integration";
   /** What control to draw. 'bool' persists "true"/"false", 'bool01' persists
    *  "1"/"0". Without this every key was a free-text box and a yes/no setting
    *  made the operator type the word "true". */
-  kind?: 'text' | 'bool' | 'bool01';
+  kind?: "text" | "bool" | "bool01";
   set: boolean;
-  hint: string;            // "…last4" when set
-  source: 'managed' | 'env' | 'unset';
+  hint: string; // "…last4" when set
+  source: "managed" | "env" | "unset";
   /** True for PEM-style values, which need a textarea: a single-line input
    *  silently strips the newlines a PEM cannot do without. */
   multiline?: boolean;
 }
 
 /** How much a Raptor's signal matters — drives the badge on its card. */
-export type RaptorTier = 'required' | 'recommended' | 'optional';
+export type RaptorTier = "required" | "recommended" | "optional";
 
 /**
  * A Raptor signal source, as advertised by `GET /api/setup/raptors`. The card
@@ -115,7 +115,7 @@ export interface RaptorSource {
   poll_field: string | null;
   /** Free-tier allowance, used to show whether a chosen cadence fits the free
    *  plan or needs a paid one. */
-  free_quota: { requests: number; period: 'day' | 'month' } | null;
+  free_quota: { requests: number; period: "day" | "month" } | null;
   /** Free-text config keys selecting what this Raptor watches (sport, region,
    *  tour). Rendered as text inputs; the schema description carries the
    *  "not validated" warning. */
@@ -134,7 +134,7 @@ export interface TestResult {
 // ── Token management ─────────────────────────────────────────────────────────
 
 export function getAdminToken(): string | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
@@ -147,12 +147,12 @@ export function clearAdminToken() {
 }
 
 function authHeaders(): HeadersInit {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  const h: Record<string, string> = { "Content-Type": "application/json" };
   const token = getAdminToken();
   // Sent as X-Admin-Token (NOT Authorization): the Authorization header is
   // owned by CT Basic Auth — overriding it forces the browser login loop.
   // The Next.js proxy translates this to Authorization: Bearer for the engine.
-  if (token) h['X-Admin-Token'] = token;
+  if (token) h["X-Admin-Token"] = token;
   return h;
 }
 
@@ -175,17 +175,19 @@ export class SetupApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
-    cache: 'no-store',
+    headers: { ...authHeaders(), ...init?.headers },
+    cache: "no-store",
   });
   if (!res.ok) {
-    let msg = `${init?.method ?? 'GET'} ${path} → ${res.status}`;
+    let msg = `${init?.method ?? "GET"} ${path} → ${res.status}`;
     let code: string | undefined;
     try {
       const body = await res.json();
       if (body?.error) msg = body.error;
-      if (typeof body?.code === 'string') code = body.code;
-    } catch { /* non-JSON error body */ }
+      if (typeof body?.code === "string") code = body.code;
+    } catch {
+      /* non-JSON error body */
+    }
     throw new SetupApiError(res.status, msg, code);
   }
   return res.json();
@@ -194,17 +196,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
 export function getSetupStatus(): Promise<SetupStatus> {
-  return request('/api/setup/status');
+  return request("/api/setup/status");
 }
 
 /** Record the one-time alpha risk + jurisdiction acknowledgment (public route). */
 export function acknowledgeAlpha(): Promise<{ ok: boolean; already_acknowledged: boolean }> {
-  return request('/api/setup/acknowledge', { method: 'POST' });
+  return request("/api/setup/acknowledge", { method: "POST" });
 }
 
 export async function login(password: string): Promise<void> {
-  const r = await request<{ token: string }>('/api/auth/login', {
-    method: 'POST',
+  const r = await request<{ token: string }>("/api/auth/login", {
+    method: "POST",
     body: JSON.stringify({ password }),
   });
   setAdminToken(r.token);
@@ -212,26 +214,26 @@ export async function login(password: string): Promise<void> {
 
 /** Set or change the admin password. Returns a fresh session token. */
 export async function setAdminPassword(password: string): Promise<void> {
-  const r = await request<{ ok: boolean; token: string }>('/api/setup/admin', {
-    method: 'POST',
+  const r = await request<{ ok: boolean; token: string }>("/api/setup/admin", {
+    method: "POST",
     body: JSON.stringify({ password }),
   });
   setAdminToken(r.token);
 }
 
 export function getCredentials(): Promise<{ credentials: CredentialInfo[] }> {
-  return request('/api/setup/credentials');
+  return request("/api/setup/credentials");
 }
 
 export function getRaptorSources(): Promise<{ raptors: RaptorSource[] }> {
-  return request('/api/setup/raptors');
+  return request("/api/setup/raptors");
 }
 
 export function putCredentials(
   credentials: Record<string, string>,
 ): Promise<{ ok: boolean; changed: string[]; restart_required: boolean }> {
-  return request('/api/setup/credentials', {
-    method: 'PUT',
+  return request("/api/setup/credentials", {
+    method: "PUT",
     body: JSON.stringify({ credentials }),
   });
 }
@@ -243,13 +245,13 @@ export async function testConnection(
   // Failed tests come back 502 with {ok:false, error} — surface as a result,
   // not an exception (401/403 still throw so the login gate can react).
   const res = await fetch(`${BASE}/api/setup/test`, {
-    method: 'POST',
+    method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ kind, credentials }),
-    cache: 'no-store',
+    cache: "no-store",
   });
   if (res.status === 401 || res.status === 403) {
-    throw new SetupApiError(res.status, 'admin session required');
+    throw new SetupApiError(res.status, "admin session required");
   }
   try {
     return await res.json();
@@ -270,7 +272,7 @@ export interface AutonomyStatus {
 }
 
 export function getAutonomy(): Promise<AutonomyStatus> {
-  return request('/api/setup/autonomy');
+  return request("/api/setup/autonomy");
 }
 
 /** Set tier / kill switch (applies live, persisted) or clear a breaker demotion. */
@@ -279,11 +281,11 @@ export function putAutonomy(body: {
   kill_switch?: boolean;
   reset_breaker?: boolean;
 }): Promise<AutonomyStatus> {
-  return request('/api/setup/autonomy', { method: 'PUT', body: JSON.stringify(body) });
+  return request("/api/setup/autonomy", { method: "PUT", body: JSON.stringify(body) });
 }
 
 export function restartEngine(): Promise<{ ok: boolean; message: string }> {
-  return request('/api/setup/restart', { method: 'POST' });
+  return request("/api/setup/restart", { method: "POST" });
 }
 
 /**
@@ -298,7 +300,7 @@ export function putVenue(venue: VenueId): Promise<{
   previous?: VenueId;
   restart_required: boolean;
 }> {
-  return request('/api/setup/venue', { method: 'PUT', body: JSON.stringify({ venue }) });
+  return request("/api/setup/venue", { method: "PUT", body: JSON.stringify({ venue }) });
 }
 
 // ── Config bundle export / import (AMI upgrade path) ─────────────────────────
@@ -320,7 +322,7 @@ export async function exportBundle(): Promise<Blob> {
 
 /** Restore a bundle produced by exportBundle. Follow with restartEngine(). */
 export function importBundle(bundleJson: string): Promise<ImportResult> {
-  return request('/api/setup/import', { method: 'POST', body: bundleJson });
+  return request("/api/setup/import", { method: "POST", body: bundleJson });
 }
 
 // ── Instance migration (E64): move the data, retire the old engine ───────────
@@ -342,12 +344,24 @@ export interface MigrationState {
   retired: { retired_at: string; reason: string } | null;
   /** The backup being built in this engine process, if any. */
   backup: {
-    phase: 'retiring' | 'cancelling_orders' | 'snapshotting' | 'copying' | 'archiving' | 'ready' | 'failed' | string;
+    phase:
+      | "retiring"
+      | "cancelling_orders"
+      | "snapshotting"
+      | "copying"
+      | "archiving"
+      | "ready"
+      | "failed"
+      | string;
     started_at?: string | null;
     finished_at?: string | null;
     error?: string | null;
   } | null;
-  latest_backup: { archive_name: string; archive_bytes: number; manifest: MigrationManifest } | null;
+  latest_backup: {
+    archive_name: string;
+    archive_bytes: number;
+    manifest: MigrationManifest;
+  } | null;
   restore_staged: { staged_at: string; manifest: MigrationManifest } | null;
   last_restore: {
     applied_at: string;
@@ -373,31 +387,38 @@ export interface MigrationStatus {
 }
 
 export function getMigrationStatus(): Promise<MigrationStatus> {
-  return request('/api/migration/status');
+  return request("/api/migration/status");
 }
 
 /** Retire this instance and build its backup in the background. Poll getMigrationStatus(). */
-export function prepareMigration(includeTrainingData: boolean): Promise<{ ok: boolean; state: MigrationState }> {
-  return request('/api/migration/prepare', {
-    method: 'POST',
+export function prepareMigration(
+  includeTrainingData: boolean,
+): Promise<{ ok: boolean; state: MigrationState }> {
+  return request("/api/migration/prepare", {
+    method: "POST",
     body: JSON.stringify({ include_training_data: includeTrainingData }),
   });
 }
 
 /** Undo a retirement on this instance; the engine restarts and trades again. */
 export function resumeTrading(): Promise<{ ok: boolean; message: string }> {
-  return request('/api/migration/resume', { method: 'POST' });
+  return request("/api/migration/resume", { method: "POST" });
 }
 
 /** Download the latest backup archive. It holds credentials and the full ledger. */
 export async function downloadMigrationArchive(): Promise<Blob> {
-  const res = await fetch(`${BASE}/api/migration/archive`, { headers: authHeaders(), cache: 'no-store' });
+  const res = await fetch(`${BASE}/api/migration/archive`, {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
   if (!res.ok) {
     let msg = `download failed: HTTP ${res.status}`;
     try {
       const body = await res.json();
       if (body?.error) msg = body.error;
-    } catch { /* non-JSON error body */ }
+    } catch {
+      /* non-JSON error body */
+    }
     throw new SetupApiError(res.status, msg);
   }
   return res.blob();
@@ -435,40 +456,58 @@ export function uploadMigrationArchive(
     const xhr = new XMLHttpRequest();
     // `size` lets the engine refuse up front when its disk cannot hold the upload.
     const query = new URLSearchParams({ size: String(file.size) });
-    if (overwrite) query.set('overwrite', 'true');
-    xhr.open('POST', `${BASE}/api/migration/restore?${query.toString()}`);
+    if (overwrite) query.set("overwrite", "true");
+    xhr.open("POST", `${BASE}/api/migration/restore?${query.toString()}`);
     const token = getAdminToken();
-    if (token) xhr.setRequestHeader('X-Admin-Token', token);
-    xhr.setRequestHeader('Content-Type', 'application/gzip');
+    if (token) xhr.setRequestHeader("X-Admin-Token", token);
+    xhr.setRequestHeader("Content-Type", "application/gzip");
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };
     xhr.onload = () => {
-      let body: { error?: string; needs_overwrite?: boolean; existing_trades?: number | null } | null = null;
-      try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON body */ }
+      let body: {
+        error?: string;
+        needs_overwrite?: boolean;
+        existing_trades?: number | null;
+      } | null = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        /* non-JSON body */
+      }
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(body as unknown as RestoreUploadResult);
       } else if (xhr.status === 409 && body?.needs_overwrite) {
-        reject(new RestoreNeedsOverwrite(body.error ?? 'this instance already has trades', body.existing_trades ?? null));
+        reject(
+          new RestoreNeedsOverwrite(
+            body.error ?? "this instance already has trades",
+            body.existing_trades ?? null,
+          ),
+        );
       } else if (xhr.status === 413) {
         // nginx answers this before DRADIS sees the upload, so there is no JSON body.
-        reject(new SetupApiError(413, 'The upload was refused for its size before it reached DRADIS. On an instance installed before 1.2, copy deploy/ami/nginx.conf to /opt/dradis/nginx.conf and restart the dradis-proxy container.'));
+        reject(
+          new SetupApiError(
+            413,
+            "The upload was refused for its size before it reached DRADIS. On an instance installed before 1.2, copy deploy/ami/nginx.conf to /opt/dradis/nginx.conf and restart the dradis-proxy container.",
+          ),
+        );
       } else {
         reject(new SetupApiError(xhr.status, body?.error ?? `upload failed: HTTP ${xhr.status}`));
       }
     };
-    xhr.onerror = () => reject(new SetupApiError(0, 'upload failed: the connection dropped'));
+    xhr.onerror = () => reject(new SetupApiError(0, "upload failed: the connection dropped"));
     xhr.send(file);
   });
 }
 
 /** Restart the engine so a staged restore is applied before any database opens. */
 export function applyStagedRestore(): Promise<{ ok: boolean; message: string }> {
-  return request('/api/migration/restore/apply', { method: 'POST' });
+  return request("/api/migration/restore/apply", { method: "POST" });
 }
 
 export function discardStagedRestore(): Promise<{ ok: boolean }> {
-  return request('/api/migration/restore/discard', { method: 'POST' });
+  return request("/api/migration/restore/discard", { method: "POST" });
 }
 
 // ── Risk-posture config profiles ──────────────────────────────────────────────
@@ -480,7 +519,7 @@ export interface ConfigProfile {
 }
 
 /** How far a profile apply reaches. See `ProfileScope` in src/api/setup.rs. */
-export type ProfileScope = 'global_only' | 'global_and_deployed';
+export type ProfileScope = "global_only" | "global_and_deployed";
 
 export interface ApplyProfileResult {
   ok: boolean;
@@ -497,7 +536,7 @@ export function getProfiles(): Promise<{
   /** Squadrons a `global_and_deployed` apply would touch, right now. */
   deployed_squadrons: string[];
 }> {
-  return request('/api/setup/profiles');
+  return request("/api/setup/profiles");
 }
 
 /**
@@ -509,10 +548,10 @@ export function getProfiles(): Promise<{
  */
 export function applyProfile(
   name: string,
-  scope: ProfileScope = 'global_and_deployed',
+  scope: ProfileScope = "global_and_deployed",
 ): Promise<ApplyProfileResult> {
-  return request('/api/setup/profiles/apply', {
-    method: 'POST',
+  return request("/api/setup/profiles/apply", {
+    method: "POST",
     body: JSON.stringify({ name, scope }),
   });
 }

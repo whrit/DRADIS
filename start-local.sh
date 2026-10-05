@@ -124,7 +124,7 @@ fi
 # Install UI deps if needed
 if [ ! -d "control-tower/node_modules" ]; then
     echo "📦 Installing Control Tower dependencies..."
-    (cd control-tower && npm install)
+    (cd control-tower && pnpm install --frozen-lockfile)
 fi
 
 mkdir -p logs
@@ -263,5 +263,5 @@ echo ""
 NEXT_PUBLIC_API_URL='' \
 DRADIS_API_URL=http://127.0.0.1:$API_PORT \
 NEXT_DIST_DIR=".next-$INSTANCE" \
-    npm --prefix control-tower run dev -- -p $UI_PORT
+    pnpm --dir control-tower run dev -p $UI_PORT
 

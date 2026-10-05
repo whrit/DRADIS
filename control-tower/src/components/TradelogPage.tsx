@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,69 +16,78 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { useState, useMemo } from 'react';
-import useSWR from 'swr';
-import type { TradeRow, OpenPositionRow, TradeStats, PositionQuote } from '@/lib/types';
-import { getTrades, getTradeStats, getOpenPositions, getPositionQuotes, downloadTradelogCsv } from '@/lib/api';
-import { DEMO_MODE } from '@/lib/demo';
+import { useState, useMemo } from "react";
+import useSWR from "swr";
+import type { TradeRow, OpenPositionRow, TradeStats, PositionQuote } from "@/lib/types";
+import {
+  getTrades,
+  getTradeStats,
+  getOpenPositions,
+  getPositionQuotes,
+  downloadTradelogCsv,
+} from "@/lib/api";
+import { DEMO_MODE } from "@/lib/demo";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LogStatus = 'launch' | 'inflight' | 'completed';
+type LogStatus = "launch" | "inflight" | "completed";
 
 interface LogEntry {
-  key:       string;
-  ts:        Date;
+  key: string;
+  ts: Date;
   /**
    * Which database the row came from. A *storage* location, not a market
    * attribute — it holds an underlying symbol on the intl CLOB but a venue name
    * on Kalshi and US. Displayed as "Book", never as the asset. The real
    * attributes are `venue` / `marketClass` / `underlying` below.
    */
-  shard:     string;
-  venue:       string | null;
+  shard: string;
+  venue: string | null;
   marketClass: string | null;
   /** Null for markets with no underlying instrument (sports, politics). */
-  underlying:  string | null;
+  underlying: string | null;
   /** Round-trip venue fees. `pnl` is already net of these. Null if uncaptured. */
-  fees:        number | null;
-  status:    LogStatus;
-  strategy:  string;
-  market:    string;
-  side:      string;
-  entry:     number;
+  fees: number | null;
+  status: LogStatus;
+  strategy: string;
+  market: string;
+  side: string;
+  entry: number;
   curOrExit: number | null; // current_price for open; exit_price for completed
   priceAgeSecs: number | null; // seconds since the shown price was fetched (open rows only)
-  priceIsLiveBid: boolean;    // true when the price is a live venue bid, not the stored mark
-  shares:    number;
-  pnl:       number | null; // realized for completed; unrealized for open
-  reason:    string;
-  ghost:     boolean;
+  priceIsLiveBid: boolean; // true when the price is a live venue bid, not the stored mark
+  shares: number;
+  pnl: number | null; // realized for completed; unrealized for open
+  reason: string;
+  ghost: boolean;
   /** Set only on Helm trades; links the row to the conviction behind it. */
   intentId?: number | null;
   chainAdopted: boolean;
-  tokenId?:  string;        // for RTB on open positions
+  tokenId?: string; // for RTB on open positions
   rawPosition?: OpenPositionRow; // kept for RTB modal
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const ASSET_COLOR: Record<string, string> = {
-  btc: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
-  eth: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
-  sol: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
+  btc: "bg-orange-500/10 text-orange-300 border-orange-500/20",
+  eth: "bg-blue-500/10 text-blue-300 border-blue-500/20",
+  sol: "bg-purple-500/10 text-purple-300 border-purple-500/20",
 };
 
-const ASSET_EMOJI: Record<string, string> = { btc: '₿', eth: 'Ξ', sol: '◎' };
+const ASSET_EMOJI: Record<string, string> = { btc: "₿", eth: "Ξ", sol: "◎" };
 
 const VENUE_LABEL: Record<string, string> = {
-  'kalshi':          'Kalshi',
-  'polymarket-us':   'Poly US',
-  'polymarket-intl': 'Poly Intl',
+  kalshi: "Kalshi",
+  "polymarket-us": "Poly US",
+  "polymarket-intl": "Poly Intl",
 };
 
 const CLASS_EMOJI: Record<string, string> = {
-  crypto: '₿', sports: '🏈', politics: '🏛', unknown: '◈',
+  crypto: "₿",
+  sports: "🏈",
+  politics: "🏛",
+  unknown: "◈",
 };
 
 /**
@@ -87,30 +96,41 @@ const CLASS_EMOJI: Record<string, string> = {
  * instead of an invented ticker.
  */
 function subjectBadge(e: LogEntry): string {
-  if (e.underlying)  return `${ASSET_EMOJI[e.underlying] ?? '◈'} ${e.underlying.toUpperCase()}`;
-  if (e.marketClass) return `${CLASS_EMOJI[e.marketClass] ?? '◈'} ${e.marketClass.toUpperCase()}`;
-  return '—';
+  if (e.underlying) return `${ASSET_EMOJI[e.underlying] ?? "◈"} ${e.underlying.toUpperCase()}`;
+  if (e.marketClass) return `${CLASS_EMOJI[e.marketClass] ?? "◈"} ${e.marketClass.toUpperCase()}`;
+  return "—";
 }
 
 const STATUS_META: Record<LogStatus, { icon: string; label: string; color: string }> = {
-  launch:    { icon: '🚀', label: 'Launch',    color: 'text-blue-400' },
-  inflight:  { icon: '✈️',  label: 'In-Flight', color: 'text-amber-400' },
-  completed: { icon: '🎯', label: 'Completed', color: 'text-green-400' },
+  launch: { icon: "🚀", label: "Launch", color: "text-blue-400" },
+  inflight: { icon: "✈️", label: "In-Flight", color: "text-amber-400" },
+  completed: { icon: "🎯", label: "Completed", color: "text-green-400" },
 };
 
-function shortStrategy(s: string) { return s.replace('Strategy', ''); }
+function shortStrategy(s: string) {
+  return s.replace("Strategy", "");
+}
 
 function fmtTime(d: Date) {
-  const date = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const date = d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
   return `${date} ${time}`;
 }
 
 function fmtPnl(n: number | null, prefix = true) {
   if (n === null) return <span className="text-gray-600">—</span>;
-  const sign = n >= 0 ? '+' : '';
-  const cls  = n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-gray-400';
-  return <span className={cls}>{prefix ? `${sign}$${Math.abs(n).toFixed(4)}` : `${sign}$${n.toFixed(4)}`}</span>;
+  const sign = n >= 0 ? "+" : "";
+  const cls = n > 0 ? "text-green-400" : n < 0 ? "text-red-400" : "text-gray-400";
+  return (
+    <span className={cls}>
+      {prefix ? `${sign}$${Math.abs(n).toFixed(4)}` : `${sign}$${n.toFixed(4)}`}
+    </span>
+  );
 }
 
 /** P&L as a percent of the capital put in at entry (entry price × shares). */
@@ -118,13 +138,14 @@ function fmtPnlPct(pnl: number | null, entry: number, shares: number) {
   const cost = entry * shares;
   if (pnl === null || !Number.isFinite(cost) || cost <= 0) return null;
   const pct = (pnl / cost) * 100;
-  const cls = pct > 0 ? 'text-green-400' : pct < 0 ? 'text-red-400' : 'text-gray-400';
+  const cls = pct > 0 ? "text-green-400" : pct < 0 ? "text-red-400" : "text-gray-400";
   return (
     <span
-      className={`ml-1 text-[11px] font-normal ${cls}`}
+      className={`ml-1 text-2xs font-normal ${cls}`}
       title={`P&L as a percent of the entry cost ($${cost.toFixed(4)} = ${entry.toFixed(4)} × ${shares.toFixed(2)} shares).`}
     >
-      ({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)
+      ({pct >= 0 ? "+" : ""}
+      {pct.toFixed(1)}%)
     </span>
   );
 }
@@ -135,17 +156,25 @@ function fmtUnrealized(entry: number, cur: number | null, shares: number) {
 }
 
 function truncate(s: string, n: number) {
-  return s.length > n ? s.slice(0, n) + '…' : s;
+  return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
-function TipCell({ full, maxChars, className = '' }: { full: string; maxChars: number; className?: string }) {
+function TipCell({
+  full,
+  maxChars,
+  className = "",
+}: {
+  full: string;
+  maxChars: number;
+  className?: string;
+}) {
   if (full.length <= maxChars) return <span className={className}>{full}</span>;
   return (
     <span className="relative group inline-block">
       <span className={`border-b border-dotted border-gray-600 cursor-help ${className}`}>
         {truncate(full, maxChars)}
       </span>
-      <span className="pointer-events-none select-none absolute z-50 bottom-full left-0 mb-1.5 w-max max-w-xs rounded-md px-2.5 py-1.5 bg-[#1e1e35] border border-[#2e2e4e] text-gray-200 text-[11px] font-mono leading-snug shadow-lg shadow-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-100 whitespace-pre-wrap break-words">
+      <span className="pointer-events-none select-none absolute z-50 bottom-full left-0 mb-1.5 w-max max-w-xs rounded-md px-2.5 py-1.5 bg-surface-chip border border-surface-chip-border text-gray-200 text-2xs font-mono leading-snug shadow-lg shadow-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-100 whitespace-pre-wrap break-words">
         {full}
       </span>
     </span>
@@ -164,77 +193,78 @@ function assetToEntries(
 
   for (const t of trades) {
     entries.push({
-      key:        `${shard}-completed-${t.ts}-${t.market}`,
-      ts:         new Date(t.ts),
+      key: `${shard}-completed-${t.ts}-${t.market}`,
+      ts: new Date(t.ts),
       shard,
-      venue:       t.venue ?? null,
+      venue: t.venue ?? null,
       marketClass: t.market_class ?? null,
-      underlying:  t.underlying ?? null,
-      fees:        t.fees != null ? parseFloat(t.fees) : null,
-      status:     'completed',
-      strategy:   t.strategy,
-      market:     t.market,
-      side:       t.side,
-      entry:      parseFloat(t.entry_price),
-      curOrExit:  parseFloat(t.exit_price),
+      underlying: t.underlying ?? null,
+      fees: t.fees != null ? parseFloat(t.fees) : null,
+      status: "completed",
+      strategy: t.strategy,
+      market: t.market,
+      side: t.side,
+      entry: parseFloat(t.entry_price),
+      curOrExit: parseFloat(t.exit_price),
       priceAgeSecs: null, // a completed trade's exit price is final, not a mark
       priceIsLiveBid: false,
-      shares:     parseFloat(t.shares),
-      pnl:        parseFloat(t.pnl),
-      reason:     t.reason,
+      shares: parseFloat(t.shares),
+      pnl: parseFloat(t.pnl),
+      reason: t.reason,
       // Was hardcoded false, which told every viewer that every completed trade
       // was real money. Open positions were badged correctly from
       // `open_positions.ghost_mode` all along, so a customer stuck in simulation
       // saw ghost badges disappear the moment a trade closed — and a P&L ledger
       // that looked entirely real. Rows written before the column existed report
       // false, which is what they already displayed.
-      ghost:      t.ghost ?? false,
-      intentId:   t.intent_id ?? null,
+      ghost: t.ghost ?? false,
+      intentId: t.intent_id ?? null,
       chainAdopted: false,
     });
   }
 
   for (const p of positions) {
-    const status: LogStatus = p.status === 'pending' ? 'launch' : 'inflight';
+    const status: LogStatus = p.status === "pending" ? "launch" : "inflight";
     const entry = parseFloat(p.entry_price);
     // Prefer the live bid: it is both fresher and the price a manual exit would
     // actually get. Fall back to the stored mark, which the age badge labels.
     const liveQuote = quoteByToken[p.token_id];
-    const liveBid   = liveQuote?.bid ? parseFloat(liveQuote.bid) : null;
-    const cur   = liveBid ?? (p.current_price ? parseFloat(p.current_price) : null);
+    const liveBid = liveQuote?.bid ? parseFloat(liveQuote.bid) : null;
+    const cur = liveBid ?? (p.current_price ? parseFloat(p.current_price) : null);
     const shares = parseFloat(p.shares);
     const unrealized = fmtUnrealized(entry, cur, shares);
     entries.push({
-      key:         `${shard}-${status}-${p.ts}-${p.token_id}`,
-      ts:          new Date(p.ts),
+      key: `${shard}-${status}-${p.ts}-${p.token_id}`,
+      ts: new Date(p.ts),
       shard,
-      venue:       p.venue ?? null,
+      venue: p.venue ?? null,
       marketClass: p.market_class ?? null,
       // Legacy rows and chain adoptions predating the filing columns keep the
       // old shard heuristic (the shard IS the underlying on the intl venue),
       // so their Subject does not regress to "—" after the upgrade. A row
       // that carries the column always wins — the heuristic mislabels every
       // non-intl shard.
-      underlying:  p.underlying ?? (ASSET_EMOJI[shard] ? shard : null),
-      fees:        null,
+      underlying: p.underlying ?? (ASSET_EMOJI[shard] ? shard : null),
+      fees: null,
       status,
-      strategy:    p.strategy,
-      market:      p.market,
-      side:        p.side,
+      strategy: p.strategy,
+      market: p.market,
+      side: p.side,
       entry,
-      curOrExit:   cur,
+      curOrExit: cur,
       priceIsLiveBid: liveBid !== null,
-      priceAgeSecs: liveBid !== null
-        ? (liveQuote?.age_secs ?? null)
-        : p.price_updated_at
-          ? Math.max(0, Math.round((Date.now() - new Date(p.price_updated_at).getTime()) / 1000))
-          : null,
+      priceAgeSecs:
+        liveBid !== null
+          ? (liveQuote?.age_secs ?? null)
+          : p.price_updated_at
+            ? Math.max(0, Math.round((Date.now() - new Date(p.price_updated_at).getTime()) / 1000))
+            : null,
       shares,
-      pnl:         unrealized,
-      reason:      '',
-      ghost:       p.ghost_mode,
+      pnl: unrealized,
+      reason: "",
+      ghost: p.ghost_mode,
       chainAdopted: p.chain_adopted,
-      tokenId:     p.token_id,
+      tokenId: p.token_id,
       rawPosition: p,
     });
   }
@@ -245,17 +275,23 @@ function assetToEntries(
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function FilterPill({
-  label, active, onClick,
-}: { label: string; active: boolean; onClick: () => void }) {
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
       className={[
-        'text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap',
+        "text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap",
         active
-          ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-          : 'bg-[#13131f] border-[#1e1e32] text-gray-500 hover:border-gray-600 hover:text-gray-300',
-      ].join(' ')}
+          ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
+          : "bg-surface-card border-surface-border text-gray-500 hover:border-gray-600 hover:text-gray-300",
+      ].join(" ")}
     >
       {label}
     </button>
@@ -277,31 +313,41 @@ function FilterPill({
  * error). The cards then show dashes: a list that has not arrived is not an
  * empty ledger, and must not render as 0 missions and +$0.0000 ([B43]).
  */
-function SummaryBar({ entries, stats, unknown }: {
-  entries: LogEntry[]; stats: (TradeStats & { asset: string })[]; unknown: string | null;
+function SummaryBar({
+  entries,
+  stats,
+  unknown,
+}: {
+  entries: LogEntry[];
+  stats: (TradeStats & { asset: string })[];
+  unknown: string | null;
 }) {
-  const launches   = entries.filter(e => e.status === 'launch').length;
-  const inflight   = entries.filter(e => e.status === 'inflight').length;
+  const launches = entries.filter((e) => e.status === "launch").length;
+  const inflight = entries.filter((e) => e.status === "inflight").length;
   const completedCount = stats.reduce((s, t) => s + t.count, 0);
-  const realizedPnl    = stats.reduce((s, t) => s + t.realized_pnl, 0);
+  const realizedPnl = stats.reduce((s, t) => s + t.realized_pnl, 0);
   const unrealized = entries
-    .filter(e => e.status !== 'completed' && e.pnl !== null)
+    .filter((e) => e.status !== "completed" && e.pnl !== null)
     .reduce((s, e) => s + (e.pnl ?? 0), 0);
 
   const pnlTotal = realizedPnl + unrealized;
-  const pnlColor = pnlTotal >= 0 ? 'text-green-400' : 'text-red-400';
+  const pnlColor = pnlTotal >= 0 ? "text-green-400" : "text-red-400";
 
   if (unknown) {
     const card = (label: string) => (
       <div key={label} className="card px-4 py-3 flex flex-col gap-1">
         <span className="label-muted">{label}</span>
         <span className="stat-value text-gray-500">—</span>
-        <span className={`text-xs ${unknown === 'loading…' ? 'text-gray-500' : 'text-red-400'}`}>{unknown}</span>
+        <span className={`text-xs ${unknown === "loading…" ? "text-gray-500" : "text-red-400"}`}>
+          {unknown}
+        </span>
       </div>
     );
     return (
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {['🚀 Viper Launches', '✈️ Missions In-Flight', '🎯 Completed Missions', 'Net P&L'].map(card)}
+        {["🚀 Viper Launches", "✈️ Missions In-Flight", "🎯 Completed Missions", "Net P&L"].map(
+          card,
+        )}
       </div>
     );
   }
@@ -321,14 +367,14 @@ function SummaryBar({ entries, stats, unknown }: {
       <div className="card px-4 py-3 flex flex-col gap-1">
         <span className="label-muted">🎯 Completed Missions</span>
         <span className="stat-value text-gray-200">{completedCount}</span>
-        <span className={`text-xs ${realizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(4)} realized
+        <span className={`text-xs ${realizedPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+          {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(4)} realized
         </span>
       </div>
       <div className="card px-4 py-3 flex flex-col gap-1">
         <span className="label-muted">Net P&L</span>
         <span className={`stat-value ${pnlColor}`}>
-          {pnlTotal >= 0 ? '+' : ''}${pnlTotal.toFixed(4)}
+          {pnlTotal >= 0 ? "+" : ""}${pnlTotal.toFixed(4)}
         </span>
         <span className="text-xs text-gray-500">realized + unrealized</span>
       </div>
@@ -351,29 +397,46 @@ function RtbModal({
 }) {
   function isLong(side: string) {
     const s = side.toUpperCase();
-    return s === 'YES' || s === 'UP' || s === 'BUY';
+    return s === "YES" || s === "UP" || s === "BUY";
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-[#13131f] border border-amber-500/30 rounded-lg shadow-2xl p-6 max-w-md w-full mx-4">
+      <div className="bg-surface-card border border-amber-500/30 rounded-lg shadow-2xl p-6 max-w-md w-full mx-4">
         <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
           🎯 Close Now
         </h3>
         <div className="space-y-2 text-sm text-gray-300 mb-5">
-          <p><strong className="text-white">Venue:</strong> {entry.venue ? (VENUE_LABEL[entry.venue] ?? entry.venue) : entry.shard.toUpperCase()}</p>
-          <p><strong className="text-white">Subject:</strong> {subjectBadge(entry)}</p>
-          <p><strong className="text-white">Market:</strong> {truncate(entry.market, 60)}</p>
           <p>
-            <strong className="text-white">Side:</strong>{' '}
-            <span className={isLong(entry.side) ? 'text-green-400' : 'text-red-400'}>{entry.side}</span>
+            <strong className="text-white">Venue:</strong>{" "}
+            {entry.venue ? (VENUE_LABEL[entry.venue] ?? entry.venue) : entry.shard.toUpperCase()}
           </p>
-          <p><strong className="text-white">Shares:</strong> {entry.shares.toFixed(2)}</p>
+          <p>
+            <strong className="text-white">Subject:</strong> {subjectBadge(entry)}
+          </p>
+          <p>
+            <strong className="text-white">Market:</strong> {truncate(entry.market, 60)}
+          </p>
+          <p>
+            <strong className="text-white">Side:</strong>{" "}
+            <span className={isLong(entry.side) ? "text-green-400" : "text-red-400"}>
+              {entry.side}
+            </span>
+          </p>
+          <p>
+            <strong className="text-white">Shares:</strong> {entry.shares.toFixed(2)}
+          </p>
           <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 mt-3">
             <p className="text-orange-300 font-semibold mb-1">⚠️ What this does:</p>
             <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
-              <li>Sells the <strong>whole position immediately</strong> at the live bid with a fill-or-kill market order (FAK)</li>
+              <li>
+                Sells the <strong>whole position immediately</strong> at the live bid with a
+                fill-or-kill market order (FAK)
+              </li>
               <li>Taker fees apply (~2% on Polymarket)</li>
-              <li>The squadron keeps patrolling — this closes one position, it does not stand anything down</li>
+              <li>
+                The squadron keeps patrolling — this closes one position, it does not stand anything
+                down
+              </li>
               <li>Alternative: let the position settle naturally (no fees)</li>
             </ul>
           </div>
@@ -391,7 +454,7 @@ function RtbModal({
             disabled={loading}
             className="flex-1 px-4 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white font-semibold transition-colors disabled:opacity-50"
           >
-            {loading ? 'Closing…' : '🎯 Close Now'}
+            {loading ? "Closing…" : "🎯 Close Now"}
           </button>
         </div>
       </div>
@@ -414,9 +477,13 @@ function ExportCsvButton({ assets }: { assets: string[] }) {
   const run = async () => {
     setBusy(true);
     setErr(false);
-    try { await downloadTradelogCsv(assets); }
-    catch { setErr(true); }
-    finally { setBusy(false); }
+    try {
+      await downloadTradelogCsv(assets);
+    } catch {
+      setErr(true);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -424,31 +491,37 @@ function ExportCsvButton({ assets }: { assets: string[] }) {
       onClick={run}
       disabled={busy}
       title="Download the complete trade history (all assets, all filters ignored) as CSV. A trade record for tax prep or review — not a tax document; cost-basis treatment is your accountant's call."
-      className="px-2.5 py-1 rounded-lg text-xs font-mono border border-[#1e1e32] text-gray-500 hover:text-gray-300 hover:border-indigo-500/40 transition-colors disabled:opacity-40"
+      className="px-2.5 py-1 rounded-lg text-xs font-mono border border-surface-border text-gray-500 hover:text-gray-300 hover:border-indigo-500/40 transition-colors disabled:opacity-40"
     >
-      {busy ? 'Exporting…' : err ? '⚠ Export failed — retry' : '⬇ Export CSV'}
+      {busy ? "Exporting…" : err ? "⚠ Export failed — retry" : "⬇ Export CSV"}
     </button>
   );
 }
 
 export default function TradelogPage({ availableAssets }: Props) {
   // ── Filters ──────────────────────────────────────────────────────────────────
-  const [assetFilter,    setAssetFilter]    = useState<string>('all');
-  const [statusFilter,   setStatusFilter]   = useState<string>('all');
-  const [strategyFilter, setStrategyFilter] = useState<string>('all');
-  const [sideFilter,     setSideFilter]     = useState<string>('all');
+  const [assetFilter, setAssetFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [strategyFilter, setStrategyFilter] = useState<string>("all");
+  const [sideFilter, setSideFilter] = useState<string>("all");
 
   // ── RTB state ───────────────────────────────────────────────────────────────
-  const [rtbEntry,   setRtbEntry]   = useState<LogEntry | null>(null);
+  const [rtbEntry, setRtbEntry] = useState<LogEntry | null>(null);
   const [rtbLoading, setRtbLoading] = useState(false);
 
   // ── Fetch all assets in parallel ─────────────────────────────────────────────
-  const assets = availableAssets.length > 0 ? availableAssets : ['btc', 'eth', 'sol'];
+  const assets = availableAssets.length > 0 ? availableAssets : ["btc", "eth", "sol"];
 
-  const { data: tradesData, isLoading: tradesLoading, error: tradesError } = useSWR(
-    ['tradelog-trades', assets.join(',')],
+  const {
+    data: tradesData,
+    isLoading: tradesLoading,
+    error: tradesError,
+  } = useSWR(
+    ["tradelog-trades", assets.join(",")],
     async () => {
-      const results = await Promise.all(assets.map(a => getTrades(200, a).then(rows => rows.map(r => ({ asset: a, ...r })))));
+      const results = await Promise.all(
+        assets.map((a) => getTrades(200, a).then((rows) => rows.map((r) => ({ asset: a, ...r })))),
+      );
       return results.flat();
     },
     { refreshInterval: 15_000 },
@@ -456,16 +529,28 @@ export default function TradelogPage({ availableAssets }: Props) {
 
   // Lifetime totals per asset for the summary cards. Kept separate from the
   // trade list above, which stays a bounded window for display.
-  const { data: statsData, isLoading: statsLoading, error: statsError } = useSWR(
-    ['tradelog-stats', assets.join(',')],
-    async () => Promise.all(assets.map(a => getTradeStats(a).then(t => ({ asset: a, ...t })))),
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+    error: statsError,
+  } = useSWR(
+    ["tradelog-stats", assets.join(",")],
+    async () => Promise.all(assets.map((a) => getTradeStats(a).then((t) => ({ asset: a, ...t })))),
     { refreshInterval: 15_000 },
   );
 
-  const { data: positionsData, isLoading: positionsLoading, error: positionsError } = useSWR(
-    ['tradelog-positions', assets.join(',')],
+  const {
+    data: positionsData,
+    isLoading: positionsLoading,
+    error: positionsError,
+  } = useSWR(
+    ["tradelog-positions", assets.join(",")],
     async () => {
-      const results = await Promise.all(assets.map(a => getOpenPositions(a).then(rows => rows.map(r => ({ asset: a, ...r })))));
+      const results = await Promise.all(
+        assets.map((a) =>
+          getOpenPositions(a).then((rows) => rows.map((r) => ({ asset: a, ...r }))),
+        ),
+      );
       return results.flat();
     },
     { refreshInterval: 15_000 },
@@ -479,11 +564,16 @@ export default function TradelogPage({ availableAssets }: Props) {
   // refresh with the last good data still cached is not "unknown": SWR keeps
   // that data, and the list below keeps showing it, so only a read that has
   // never succeeded blanks the cards.
-  const loadErr = (!tradesData && tradesError) || (!statsData && statsError) || (!positionsData && positionsError);
+  const loadErr =
+    (!tradesData && tradesError) ||
+    (!statsData && statsError) ||
+    (!positionsData && positionsError);
   const summaryUnknown: string | null =
-    tradesLoading || statsLoading || positionsLoading ? 'loading…'
-      : loadErr ? `couldn't load: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`
-      : null;
+    tradesLoading || statsLoading || positionsLoading
+      ? "loading…"
+      : loadErr
+        ? `couldn't load: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`
+        : null;
 
   // Live venue quotes for open positions, polled far faster than the rows.
   //
@@ -496,10 +586,10 @@ export default function TradelogPage({ availableAssets }: Props) {
   // press cannot race the poll into serving a cached read: the flag travels with
   // the request that the press initiated.
   const { data: quotes = [], mutate: mutateQuotes } = useSWR(
-    allPositions.length > 0 ? ['tradelog-quotes', assets.join(',')] : null,
+    allPositions.length > 0 ? ["tradelog-quotes", assets.join(",")] : null,
     async () => {
-      const results = await Promise.allSettled(assets.map(a => getPositionQuotes(a)));
-      return results.flatMap(r => (r.status === 'fulfilled' ? r.value : []));
+      const results = await Promise.allSettled(assets.map((a) => getPositionQuotes(a)));
+      return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
     },
     { refreshInterval: 4_000 },
   );
@@ -515,10 +605,13 @@ export default function TradelogPage({ availableAssets }: Props) {
     if (refreshing || !quotesRefreshable) return;
     setRefreshing(true);
     try {
-      await mutateQuotes(async () => {
-        const results = await Promise.allSettled(assets.map(a => getPositionQuotes(a, true)));
-        return results.flatMap(r => (r.status === 'fulfilled' ? r.value : []));
-      }, { revalidate: false });
+      await mutateQuotes(
+        async () => {
+          const results = await Promise.allSettled(assets.map((a) => getPositionQuotes(a, true)));
+          return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+        },
+        { revalidate: false },
+      );
     } finally {
       setRefreshing(false);
     }
@@ -561,17 +654,17 @@ export default function TradelogPage({ availableAssets }: Props) {
 
   // ── Derived filter options ──────────────────────────────────────────────────
   const strategies = useMemo(() => {
-    const set = new Set(allEntries.map(e => shortStrategy(e.strategy)));
-    return ['all', ...Array.from(set).sort()];
+    const set = new Set(allEntries.map((e) => shortStrategy(e.strategy)));
+    return ["all", ...Array.from(set).sort()];
   }, [allEntries]);
 
   // ── Apply filters ────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    return allEntries.filter(e => {
-      if (assetFilter    !== 'all' && e.shard                        !== assetFilter)    return false;
-      if (statusFilter   !== 'all' && e.status                       !== statusFilter)   return false;
-      if (strategyFilter !== 'all' && shortStrategy(e.strategy)      !== strategyFilter) return false;
-      if (sideFilter     !== 'all' && e.side.toUpperCase()           !== sideFilter)     return false;
+    return allEntries.filter((e) => {
+      if (assetFilter !== "all" && e.shard !== assetFilter) return false;
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (strategyFilter !== "all" && shortStrategy(e.strategy) !== strategyFilter) return false;
+      if (sideFilter !== "all" && e.side.toUpperCase() !== sideFilter) return false;
       return true;
     });
   }, [allEntries, assetFilter, statusFilter, strategyFilter, sideFilter]);
@@ -582,25 +675,25 @@ export default function TradelogPage({ availableAssets }: Props) {
     if (!rtbEntry?.rawPosition) return;
     setRtbLoading(true);
     try {
-      const res = await fetch('/api/positions/manual-exit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/positions/manual-exit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token_id:          rtbEntry.rawPosition.token_id,
+          token_id: rtbEntry.rawPosition.token_id,
           // The API's `asset` field is the shard/pool selector, not a market
           // attribute — keep sending the shard under its wire name.
-          asset:             rtbEntry.shard,
-          strategy:          rtbEntry.rawPosition.strategy,
-          market:            rtbEntry.rawPosition.market,
-          side:              rtbEntry.rawPosition.side,
-          current_bid:       '0.5',
-          verifying_contract: '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E',
+          asset: rtbEntry.shard,
+          strategy: rtbEntry.rawPosition.strategy,
+          market: rtbEntry.rawPosition.market,
+          side: rtbEntry.rawPosition.side,
+          current_bid: "0.5",
+          verifying_contract: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
         }),
       });
       if (!res.ok) {
         alert(`Close Now failed: ${await res.text()}`);
       } else {
-        alert('Position closed! Refreshing…');
+        alert("Position closed! Refreshing…");
         window.location.reload();
       }
     } catch (err) {
@@ -614,11 +707,12 @@ export default function TradelogPage({ availableAssets }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
-
       {/* ── Summary stats ────────────────────────────────────────────────────── */}
       <SummaryBar
-        entries={assetFilter === 'all' ? allEntries : allEntries.filter(e => e.shard === assetFilter)}
-        stats={assetFilter === 'all' ? allStats : allStats.filter(s => s.asset === assetFilter)}
+        entries={
+          assetFilter === "all" ? allEntries : allEntries.filter((e) => e.shard === assetFilter)
+        }
+        stats={assetFilter === "all" ? allStats : allStats.filter((s) => s.asset === assetFilter)}
         unknown={summaryUnknown}
       />
 
@@ -629,12 +723,18 @@ export default function TradelogPage({ availableAssets }: Props) {
           <span
             className="text-xs text-gray-500 font-mono mr-1 cursor-help"
             title="Which database the rows come from. On the intl venue this is the underlying asset; on Kalshi and US it is the venue."
-          >Book:</span>
-          <FilterPill label="All"         active={assetFilter === 'all'} onClick={() => setAssetFilter('all')} />
-          {assets.map(a => (
+          >
+            Book:
+          </span>
+          <FilterPill
+            label="All"
+            active={assetFilter === "all"}
+            onClick={() => setAssetFilter("all")}
+          />
+          {assets.map((a) => (
             <FilterPill
               key={a}
-              label={`${ASSET_EMOJI[a] ?? '◈'} ${a.toUpperCase()}`}
+              label={`${ASSET_EMOJI[a] ?? "◈"} ${a.toUpperCase()}`}
               active={assetFilter === a}
               onClick={() => setAssetFilter(a)}
             />
@@ -644,27 +744,37 @@ export default function TradelogPage({ availableAssets }: Props) {
           {/* Status */}
           <span className="text-xs text-gray-500 font-mono mr-1">Status:</span>
           {[
-            { v: 'all',       label: 'All' },
-            { v: 'launch',    label: '🚀 Launches' },
-            { v: 'inflight',  label: '✈️ In-Flight' },
-            { v: 'completed', label: '🎯 Completed' },
+            { v: "all", label: "All" },
+            { v: "launch", label: "🚀 Launches" },
+            { v: "inflight", label: "✈️ In-Flight" },
+            { v: "completed", label: "🎯 Completed" },
           ].map(({ v, label }) => (
-            <FilterPill key={v} label={label} active={statusFilter === v} onClick={() => setStatusFilter(v)} />
+            <FilterPill
+              key={v}
+              label={label}
+              active={statusFilter === v}
+              onClick={() => setStatusFilter(v)}
+            />
           ))}
 
           {/* Side */}
           <span className="text-xs text-gray-500 font-mono ml-4 mr-1">Side:</span>
-          {['all', 'YES', 'NO'].map(s => (
-            <FilterPill key={s} label={s === 'all' ? 'All' : s} active={sideFilter === s} onClick={() => setSideFilter(s)} />
+          {["all", "YES", "NO"].map((s) => (
+            <FilterPill
+              key={s}
+              label={s === "all" ? "All" : s}
+              active={sideFilter === s}
+              onClick={() => setSideFilter(s)}
+            />
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Strategy */}
           <span className="text-xs text-gray-500 font-mono mr-1">Strategy:</span>
-          {strategies.map(s => (
+          {strategies.map((s) => (
             <FilterPill
               key={s}
-              label={s === 'all' ? 'All' : s}
+              label={s === "all" ? "All" : s}
               active={strategyFilter === s}
               onClick={() => setStrategyFilter(s)}
             />
@@ -686,18 +796,18 @@ export default function TradelogPage({ availableAssets }: Props) {
               disabled={refreshing || !quotesRefreshable}
               title={
                 quotesRefreshable
-                  ? 'Refresh live bid/ask for open positions, bypassing the server quote cache'
-                  : 'No open positions to refresh'
+                  ? "Refresh live bid/ask for open positions, bypassing the server quote cache"
+                  : "No open positions to refresh"
               }
               aria-label="Refresh live quotes"
               className="text-xs font-mono text-gray-500 hover:text-indigo-400 disabled:opacity-40 disabled:hover:text-gray-500 transition-colors"
             >
-              <span className={refreshing ? 'inline-block animate-spin' : 'inline-block'}>⟳</span>
-              <span className="ml-1">{refreshing ? 'Refreshing…' : 'Refresh quotes'}</span>
+              <span className={refreshing ? "inline-block animate-spin" : "inline-block"}>⟳</span>
+              <span className="ml-1">{refreshing ? "Refreshing…" : "Refresh quotes"}</span>
             </button>
             <ExportCsvButton assets={assets} />
             <span className="text-xs font-mono text-gray-600">
-              {isLoading ? 'Loading…' : `${filtered.length} entries`}
+              {isLoading ? "Loading…" : `${filtered.length} entries`}
               {filtered.length < allEntries.length && ` (filtered from ${allEntries.length})`}
             </span>
           </div>
@@ -713,52 +823,71 @@ export default function TradelogPage({ availableAssets }: Props) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono border-separate border-spacing-0 [&_td]:border-b [&_td]:border-[#1e1e32] [&_th]:border-b [&_th]:border-[#1e1e32]">
+            <table className="w-full text-xs font-mono border-separate border-spacing-0 [&_td]:border-b [&_td]:border-surface-border [&_th]:border-b [&_th]:border-surface-border">
               <thead>
                 <tr>
                   {/* Time is pinned left so a horizontally scrolled row stays
                       identifiable; Actions is pinned right because RTB closes a
                       live position and must never be scrolled out of reach. */}
-                  <th className="sticky left-0 z-20 bg-[#13131f] px-3 py-2 text-left text-gray-500 font-normal whitespace-nowrap">
+                  <th className="sticky left-0 z-20 bg-surface-card px-3 py-2 text-left text-gray-500 font-normal whitespace-nowrap">
                     Time
                   </th>
-                  {['Venue', 'Status', 'Strategy', 'Market', 'Size @ Entry → Exit', 'P&L', 'Reason / Mode'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-gray-500 font-normal whitespace-nowrap">
+                  {[
+                    "Venue",
+                    "Status",
+                    "Strategy",
+                    "Market",
+                    "Size @ Entry → Exit",
+                    "P&L",
+                    "Reason / Mode",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-3 py-2 text-left text-gray-500 font-normal whitespace-nowrap"
+                    >
                       {h}
                     </th>
                   ))}
-                  <th className="sticky right-0 z-20 bg-[#13131f] border-l border-[#1e1e32] px-3 py-2 text-left text-gray-500 font-normal whitespace-nowrap">
+                  <th className="sticky right-0 z-20 bg-surface-card border-l border-surface-border px-3 py-2 text-left text-gray-500 font-normal whitespace-nowrap">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(e => {
-                  const isLong   = ['YES', 'UP', 'BUY'].includes(e.side.toUpperCase());
-                  const sm       = STATUS_META[e.status];
-                  const assetCls = ASSET_COLOR[e.underlying ?? ''] ?? 'bg-gray-500/10 text-gray-300 border-gray-500/20';
-                  const isOpen   = e.status !== 'completed';
+                {filtered.map((e) => {
+                  const isLong = ["YES", "UP", "BUY"].includes(e.side.toUpperCase());
+                  const sm = STATUS_META[e.status];
+                  const assetCls =
+                    ASSET_COLOR[e.underlying ?? ""] ??
+                    "bg-gray-500/10 text-gray-300 border-gray-500/20";
+                  const isOpen = e.status !== "completed";
 
                   return (
                     <tr
                       key={e.key}
                       className={[
-                        'group hover:bg-[#1a1a2e] transition-colors',
-                        e.status === 'launch'   ? 'opacity-70' : '',
-                      ].join(' ')}
+                        "group hover:bg-surface-hover transition-colors",
+                        e.status === "launch" ? "opacity-70" : "",
+                      ].join(" ")}
                     >
                       {/* Time — pinned left */}
-                      <td className="sticky left-0 z-10 bg-[#13131f] group-hover:bg-[#1a1a2e] transition-colors px-3 py-2 text-gray-400 whitespace-nowrap">
-                        {e.chainAdopted
-                          ? <span className="text-amber-500/80 cursor-help" title="Re-adopted from on-chain wallet">⛓ adopted</span>
-                          : fmtTime(e.ts)
-                        }
+                      <td className="sticky left-0 z-10 bg-surface-card group-hover:bg-surface-hover transition-colors px-3 py-2 text-gray-400 whitespace-nowrap">
+                        {e.chainAdopted ? (
+                          <span
+                            className="text-amber-500/80 cursor-help"
+                            title="Re-adopted from on-chain wallet"
+                          >
+                            ⛓ adopted
+                          </span>
+                        ) : (
+                          fmtTime(e.ts)
+                        )}
                       </td>
 
                       {/* Venue */}
                       <td className="px-3 py-2 whitespace-nowrap">
-                        <span className="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded border bg-slate-500/10 text-slate-300 border-slate-500/20">
-                          {e.venue ? (VENUE_LABEL[e.venue] ?? e.venue) : '—'}
+                        <span className="inline-block px-1.5 py-0.5 text-3xs font-bold rounded border bg-slate-500/10 text-slate-300 border-slate-500/20">
+                          {e.venue ? (VENUE_LABEL[e.venue] ?? e.venue) : "—"}
                         </span>
                       </td>
 
@@ -776,9 +905,9 @@ export default function TradelogPage({ availableAssets }: Props) {
                           folded in here rather than dropped: it duplicates the
                           asset filter pills only while a filter is applied, and
                           on "All" it is the sole thing identifying the row. */}
-                      <td className="px-3 py-2 text-gray-400 max-w-[190px]">
+                      <td className="px-3 py-2 text-gray-400 max-w-47.5">
                         <span
-                          className={`mr-1.5 inline-block px-1 py-0.5 text-[9px] font-bold rounded border align-middle ${assetCls}`}
+                          className={`mr-1.5 inline-block px-1 py-0.5 text-4xs font-bold rounded border align-middle ${assetCls}`}
                           title="Subject"
                         >
                           {subjectBadge(e)}
@@ -789,7 +918,9 @@ export default function TradelogPage({ availableAssets }: Props) {
                       {/* Entry → Exit. Side rides along as a LABEL plus color,
                           never color alone, so it survives a mono display. */}
                       <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`mr-1.5 text-[10px] font-bold ${isLong ? 'text-green-400' : 'text-red-400'}`}>
+                        <span
+                          className={`mr-1.5 text-3xs font-bold ${isLong ? "text-green-400" : "text-red-400"}`}
+                        >
                           {e.side}
                         </span>
                         {/* Size rides with the price it was filled at — one
@@ -801,58 +932,72 @@ export default function TradelogPage({ availableAssets }: Props) {
                         <span className="mx-1 text-gray-600">@</span>
                         <span className="text-gray-300">{e.entry.toFixed(4)}</span>
                         <span className="mx-1 text-gray-600">→</span>
-                        {e.curOrExit !== null ? (() => {
-                          const delta = e.curOrExit - e.entry;
-                          const color = delta > 0 ? 'text-green-400' : delta < 0 ? 'text-red-400' : 'text-gray-300';
-                          return (
-                            <span
-                              className={color}
-                              title={
-                                !isOpen
-                                  ? 'Exit price'
-                                  : e.priceIsLiveBid
-                                    ? `Live best bid from the venue (${e.priceAgeSecs === null ? "age unknown" : `${e.priceAgeSecs}s old`}). This is what a manual exit would sell into.`
-                                    : e.priceAgeSecs === null
-                                      ? 'Stored mark price; refresh time unknown'
-                                      : `Stored mark price, ${e.priceAgeSecs}s old. Refreshed on a 300s sweep, so it can lag the live book.`
-                              }
-                            >
-                              {e.curOrExit.toFixed(4)}
-                              {isOpen && delta !== 0 && (
-                                <span className="ml-1 opacity-60 text-[10px]">
-                                  {delta > 0 ? '▲' : '▼'}
-                                </span>
-                              )}
-                              {/* Age of the mark, shown whenever it is old enough
+                        {e.curOrExit !== null ? (
+                          (() => {
+                            const delta = e.curOrExit - e.entry;
+                            const color =
+                              delta > 0
+                                ? "text-green-400"
+                                : delta < 0
+                                  ? "text-red-400"
+                                  : "text-gray-300";
+                            return (
+                              <span
+                                className={color}
+                                title={
+                                  !isOpen
+                                    ? "Exit price"
+                                    : e.priceIsLiveBid
+                                      ? `Live best bid from the venue (${e.priceAgeSecs === null ? "age unknown" : `${e.priceAgeSecs}s old`}). This is what a manual exit would sell into.`
+                                      : e.priceAgeSecs === null
+                                        ? "Stored mark price; refresh time unknown"
+                                        : `Stored mark price, ${e.priceAgeSecs}s old. Refreshed on a 300s sweep, so it can lag the live book.`
+                                }
+                              >
+                                {e.curOrExit.toFixed(4)}
+                                {isOpen && delta !== 0 && (
+                                  <span className="ml-1 opacity-60 text-3xs">
+                                    {delta > 0 ? "▲" : "▼"}
+                                  </span>
+                                )}
+                                {/* Age of the mark, shown whenever it is old enough
                                   to matter. A stale price that LOOKS live is what
                                   makes an operator mistime a manual exit. */}
-                              {/* A live bid is the number a manual exit gets, so
+                                {/* A live bid is the number a manual exit gets, so
                                   say so. Anything else is a stored mark that can
                                   be minutes behind the book, and the operator
                                   needs to see which one they are looking at. */}
-                              {isOpen && e.priceIsLiveBid && (
-                                <span className="ml-1 text-[10px] text-emerald-400/70">
-                                  {/* Age inline, not just in the tooltip. The
+                                {isOpen && e.priceIsLiveBid && (
+                                  <span className="ml-1 text-3xs text-emerald-400/70">
+                                    {/* Age inline, not just in the tooltip. The
                                       quote TTL is operator-tunable up to 300s,
                                       so "bid" alone could label a five-minute-old
                                       number — the same trap the amber mark badge
                                       exists to avoid. */}
-                                  {(e.priceAgeSecs ?? 0) > 0 ? `bid ${e.priceAgeSecs}s` : 'bid'}
-                                </span>
-                              )}
-                              {isOpen && !e.priceIsLiveBid && e.priceAgeSecs !== null && e.priceAgeSecs >= 45 && (
-                                <span className="ml-1 text-[10px] text-amber-400/80">
-                                  {e.priceAgeSecs >= 90
-                                    ? `mark ${Math.round(e.priceAgeSecs / 60)}m old`
-                                    : `mark ${e.priceAgeSecs}s old`}
-                                </span>
-                              )}
-                              {isOpen && !e.priceIsLiveBid && e.priceAgeSecs === null && (
-                                <span className="ml-1 text-[10px] text-amber-400/80">mark, age unknown</span>
-                              )}
-                            </span>
-                          );
-                        })() : <span className="text-gray-600">—</span>}
+                                    {(e.priceAgeSecs ?? 0) > 0 ? `bid ${e.priceAgeSecs}s` : "bid"}
+                                  </span>
+                                )}
+                                {isOpen &&
+                                  !e.priceIsLiveBid &&
+                                  e.priceAgeSecs !== null &&
+                                  e.priceAgeSecs >= 45 && (
+                                    <span className="ml-1 text-3xs text-amber-400/80">
+                                      {e.priceAgeSecs >= 90
+                                        ? `mark ${Math.round(e.priceAgeSecs / 60)}m old`
+                                        : `mark ${e.priceAgeSecs}s old`}
+                                    </span>
+                                  )}
+                                {isOpen && !e.priceIsLiveBid && e.priceAgeSecs === null && (
+                                  <span className="ml-1 text-3xs text-amber-400/80">
+                                    mark, age unknown
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
                       </td>
 
                       {/* P&L, with fees folded in beneath it. The two belong
@@ -860,17 +1005,23 @@ export default function TradelogPage({ availableAssets }: Props) {
                           fee, so showing them apart invites double-counting. */}
                       <td className="px-3 py-2 font-semibold whitespace-nowrap">
                         <div>
-                          {isOpen && e.curOrExit === null
-                            ? <span className="text-gray-600">—</span>
-                            : <>{fmtPnl(e.pnl)}{fmtPnlPct(e.pnl, e.entry, e.shares)}</>
-                          }
+                          {isOpen && e.curOrExit === null ? (
+                            <span className="text-gray-600">—</span>
+                          ) : (
+                            <>
+                              {fmtPnl(e.pnl)}
+                              {fmtPnlPct(e.pnl, e.entry, e.shares)}
+                            </>
+                          )}
                           {isOpen && e.pnl !== null && (
-                            <span className="ml-1 text-[10px] font-normal text-gray-600">(unrlzd)</span>
+                            <span className="ml-1 text-3xs font-normal text-gray-600">
+                              (unrlzd)
+                            </span>
                           )}
                         </div>
                         {e.fees != null && e.fees > 0 && (
                           <div
-                            className="text-[10px] font-normal text-gray-600 cursor-help"
+                            className="text-3xs font-normal text-gray-600 cursor-help"
                             title={`P&L is net of venue fees. Gross was ${(
                               (e.pnl ?? 0) + e.fees
                             ).toFixed(4)}.`}
@@ -881,8 +1032,8 @@ export default function TradelogPage({ availableAssets }: Props) {
                       </td>
 
                       {/* Reason / Mode */}
-                      <td className="px-3 py-2 text-gray-500 max-w-[180px]">
-                        {e.status === 'completed' && e.reason ? (
+                      <td className="px-3 py-2 text-gray-500 max-w-45">
+                        {e.status === "completed" && e.reason ? (
                           <TipCell full={e.reason} maxChars={28} />
                         ) : e.ghost ? (
                           <span className="text-amber-400 opacity-70">👻 ghost</span>
@@ -895,7 +1046,7 @@ export default function TradelogPage({ availableAssets }: Props) {
                           <a
                             href="#helm"
                             title={`Helm intent #${e.intentId} — the thesis, the critique and how it resolved`}
-                            className="block text-[10px] font-mono text-teal-400/80 hover:text-teal-300 mt-0.5"
+                            className="block text-3xs font-mono text-teal-400/80 hover:text-teal-300 mt-0.5"
                           >
                             🧭 intent #{e.intentId} →
                           </a>
@@ -903,11 +1054,11 @@ export default function TradelogPage({ availableAssets }: Props) {
                       </td>
 
                       {/* Actions — pinned right */}
-                      <td className="sticky right-0 z-10 bg-[#13131f] group-hover:bg-[#1a1a2e] transition-colors border-l border-[#1e1e32] px-3 py-2">
-                        {e.status === 'inflight' && e.rawPosition && !DEMO_MODE && (
+                      <td className="sticky right-0 z-10 bg-surface-card group-hover:bg-surface-hover transition-colors border-l border-surface-border px-3 py-2">
+                        {e.status === "inflight" && e.rawPosition && !DEMO_MODE && (
                           <button
                             onClick={() => setRtbEntry(e)}
-                            className="px-2 py-0.5 text-[10px] rounded bg-orange-500/10 text-orange-300 border border-orange-500/30 hover:bg-orange-500/20 transition-colors"
+                            className="px-2 py-0.5 text-3xs rounded bg-orange-500/10 text-orange-300 border border-orange-500/30 hover:bg-orange-500/20 transition-colors"
                             title="Close Now: sell this position at the live bid immediately"
                           >
                             🎯 Close Now
@@ -923,30 +1074,39 @@ export default function TradelogPage({ availableAssets }: Props) {
         )}
 
         {/* Filtered P&L footer */}
-        {!isLoading && filtered.length > 0 && (() => {
-          const realized   = filtered.filter(e => e.status === 'completed').reduce((s, e) => s + (e.pnl ?? 0), 0);
-          const unrealized = filtered.filter(e => e.status !== 'completed' && e.pnl !== null).reduce((s, e) => s + (e.pnl ?? 0), 0);
-          const net = realized + unrealized;
-          return (
-            <div className="px-4 py-3 border-t border-[#1e1e32] flex flex-wrap gap-6 text-xs font-mono">
-              <span className="text-gray-500">
-                Realized: <span className={realized >= 0 ? 'text-green-400' : 'text-red-400'}>
-                  {realized >= 0 ? '+' : ''}${realized.toFixed(4)}
+        {!isLoading &&
+          filtered.length > 0 &&
+          (() => {
+            const realized = filtered
+              .filter((e) => e.status === "completed")
+              .reduce((s, e) => s + (e.pnl ?? 0), 0);
+            const unrealized = filtered
+              .filter((e) => e.status !== "completed" && e.pnl !== null)
+              .reduce((s, e) => s + (e.pnl ?? 0), 0);
+            const net = realized + unrealized;
+            return (
+              <div className="px-4 py-3 border-t border-surface-border flex flex-wrap gap-6 text-xs font-mono">
+                <span className="text-gray-500">
+                  Realized:{" "}
+                  <span className={realized >= 0 ? "text-green-400" : "text-red-400"}>
+                    {realized >= 0 ? "+" : ""}${realized.toFixed(4)}
+                  </span>
                 </span>
-              </span>
-              <span className="text-gray-500">
-                Unrealized: <span className={unrealized >= 0 ? 'text-green-400' : 'text-red-400'}>
-                  {unrealized >= 0 ? '+' : ''}${unrealized.toFixed(4)}
+                <span className="text-gray-500">
+                  Unrealized:{" "}
+                  <span className={unrealized >= 0 ? "text-green-400" : "text-red-400"}>
+                    {unrealized >= 0 ? "+" : ""}${unrealized.toFixed(4)}
+                  </span>
                 </span>
-              </span>
-              <span className="text-gray-500">
-                Net: <span className={`font-semibold ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {net >= 0 ? '+' : ''}${net.toFixed(4)}
+                <span className="text-gray-500">
+                  Net:{" "}
+                  <span className={`font-semibold ${net >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {net >= 0 ? "+" : ""}${net.toFixed(4)}
+                  </span>
                 </span>
-              </span>
-            </div>
-          );
-        })()}
+              </div>
+            );
+          })()}
       </div>
 
       {/* RTB Modal */}
@@ -961,4 +1121,3 @@ export default function TradelogPage({ availableAssets }: Props) {
     </div>
   );
 }
-

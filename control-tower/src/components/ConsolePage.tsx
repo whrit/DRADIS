@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -25,39 +25,39 @@
  * paste into a GitHub Issue.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import useSWR from 'swr';
-import { getLogs } from '@/lib/api';
+import { useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
+import { getLogs } from "@/lib/api";
 
-type Level = 'all' | 'info' | 'warn' | 'error';
+type Level = "all" | "info" | "warn" | "error";
 
-const LEVEL_TESTS: Record<Exclude<Level, 'all'>, (l: string) => boolean> = {
-  info:  l => l.includes(' INFO '),
-  warn:  l => l.includes(' WARN '),
-  error: l => l.includes(' ERROR '),
+const LEVEL_TESTS: Record<Exclude<Level, "all">, (l: string) => boolean> = {
+  info: (l) => l.includes(" INFO "),
+  warn: (l) => l.includes(" WARN "),
+  error: (l) => l.includes(" ERROR "),
 };
 
 function lineColor(l: string): string {
-  if (l.includes(' ERROR ')) return 'text-red-400';
-  if (l.includes(' WARN '))  return 'text-amber-300';
-  if (l.includes(' DEBUG ')) return 'text-gray-600';
-  return 'text-gray-400';
+  if (l.includes(" ERROR ")) return "text-red-400";
+  if (l.includes(" WARN ")) return "text-amber-300";
+  if (l.includes(" DEBUG ")) return "text-gray-600";
+  return "text-gray-400";
 }
 
 export default function ConsolePage() {
   const [tail, setTail] = useState(500);
-  const [level, setLevel] = useState<Level>('all');
+  const [level, setLevel] = useState<Level>("all");
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { data, error, isLoading } = useSWR(['logs', tail], () => getLogs(tail), {
+  const { data, error, isLoading } = useSWR(["logs", tail], () => getLogs(tail), {
     refreshInterval: 3_000,
   });
 
   const lines = useMemo(() => {
     const all = data?.lines ?? [];
-    return level === 'all' ? all : all.filter(LEVEL_TESTS[level]);
+    return level === "all" ? all : all.filter(LEVEL_TESTS[level]);
   }, [data, level]);
 
   // Follow mode: keep the viewport pinned to the newest lines.
@@ -69,7 +69,7 @@ export default function ConsolePage() {
 
   const copyVisible = async () => {
     try {
-      await navigator.clipboard.writeText(lines.join('\n'));
+      await navigator.clipboard.writeText(lines.join("\n"));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -80,8 +80,8 @@ export default function ConsolePage() {
   const pill = (active: boolean) =>
     `px-2.5 py-1 rounded-lg text-xs font-mono border transition-colors cursor-pointer ${
       active
-        ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-        : 'bg-transparent border-[#1e1e32] text-gray-500 hover:text-gray-300'
+        ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
+        : "bg-transparent border-surface-border text-gray-500 hover:text-gray-300"
     }`;
 
   return (
@@ -89,13 +89,13 @@ export default function ConsolePage() {
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
       <div className="card px-4 py-3 flex flex-wrap items-center gap-2">
         <span className="text-xs text-gray-500 font-mono mr-1">Level:</span>
-        {(['all', 'info', 'warn', 'error'] as Level[]).map(v => (
+        {(["all", "info", "warn", "error"] as Level[]).map((v) => (
           <button key={v} className={pill(level === v)} onClick={() => setLevel(v)}>
             {v.toUpperCase()}
           </button>
         ))}
         <span className="text-xs text-gray-500 font-mono ml-4 mr-1">Tail:</span>
-        {[200, 500, 2000].map(n => (
+        {[200, 500, 2000].map((n) => (
           <button key={n} className={pill(tail === n)} onClick={() => setTail(n)}>
             {n}
           </button>
@@ -105,13 +105,13 @@ export default function ConsolePage() {
             type="checkbox"
             className="h-3.5 w-3.5 accent-indigo-500"
             checked={follow}
-            onChange={e => setFollow(e.target.checked)}
+            onChange={(e) => setFollow(e.target.checked)}
           />
           Follow
         </label>
         <div className="flex-1" />
         <button className={pill(false)} onClick={copyVisible}>
-          {copied ? '✓ Copied' : '⧉ Copy visible'}
+          {copied ? "✓ Copied" : "⧉ Copy visible"}
         </button>
       </div>
 
@@ -123,13 +123,17 @@ export default function ConsolePage() {
             <p className="label-muted">Engine Console</p>
           </div>
           <span className="text-xs font-mono text-gray-600">
-            {error ? 'engine unreachable' : isLoading ? 'Loading…' : `${lines.length} lines · refreshes every 3s`}
+            {error
+              ? "engine unreachable"
+              : isLoading
+                ? "Loading…"
+                : `${lines.length} lines · refreshes every 3s`}
           </span>
         </div>
         <div
           ref={scrollRef}
           onWheel={() => setFollow(false)}
-          className="h-[65vh] overflow-y-auto bg-[#0a0a12] border-t border-[#1e1e32] px-4 py-3 font-mono text-[11px] leading-relaxed"
+          className="h-65vh overflow-y-auto bg-surface-page border-t border-surface-border px-4 py-3 font-mono text-2xs leading-relaxed"
         >
           {lines.length === 0 && !isLoading ? (
             <p className="text-gray-600">No log lines yet — the buffer fills as the engine runs.</p>
@@ -143,10 +147,10 @@ export default function ConsolePage() {
         </div>
       </div>
 
-      <p className="text-[11px] text-gray-600 font-mono">
-        Shows the engine&apos;s most recent in-memory log lines (up to 2,000). Sharing a snippet in a
-        GitHub Issue? Use &ldquo;Copy visible&rdquo; with the ERROR filter — and skim it for market
-        names or figures you&apos;d rather not post publicly.
+      <p className="text-2xs text-gray-600 font-mono">
+        Shows the engine&apos;s most recent in-memory log lines (up to 2,000). Sharing a snippet in
+        a GitHub Issue? Use &ldquo;Copy visible&rdquo; with the ERROR filter — and skim it for
+        market names or figures you&apos;d rather not post publicly.
       </p>
     </div>
   );

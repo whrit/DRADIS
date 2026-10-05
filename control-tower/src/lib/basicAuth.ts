@@ -26,7 +26,7 @@
  * memory twice. That route is excluded from the matcher instead and calls
  * `basicAuthFailure` itself, so excluding it costs no authentication.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Returns a 401 response when the request does not carry valid credentials, or
@@ -44,11 +44,11 @@ export function basicAuthFailure(req: NextRequest): NextResponse | null {
     return null;
   }
 
-  const authHeader = req.headers.get('authorization') ?? '';
-  if (authHeader.startsWith('Basic ')) {
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (authHeader.startsWith("Basic ")) {
     const encoded = authHeader.slice(6);
-    const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
-    const colon   = decoded.indexOf(':');
+    const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+    const colon = decoded.indexOf(":");
     if (colon !== -1) {
       const user = decoded.slice(0, colon);
       const pass = decoded.slice(colon + 1);
@@ -59,10 +59,10 @@ export function basicAuthFailure(req: NextRequest): NextResponse | null {
   }
 
   // Prompt the browser for credentials
-  return new NextResponse('Unauthorized', {
+  return new NextResponse("Unauthorized", {
     status: 401,
     headers: {
-      'WWW-Authenticate': 'Basic realm="DRADIS Control Tower", charset="UTF-8"',
+      "WWW-Authenticate": 'Basic realm="DRADIS Control Tower", charset="UTF-8"',
     },
   });
 }

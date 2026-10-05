@@ -85,7 +85,8 @@ fi
 # `docker build .` works fine here, and the failure only surfaces on the remote
 # builder, twenty minutes and one instance later. Three separate files were
 # missing this way on the first real run (Cargo.lock, control-tower/Dockerfile,
-# control-tower/package-lock.json), so check it locally instead.
+# control-tower/package-lock.json, since replaced by pnpm-lock.yaml), so check
+# it locally instead.
 REQUIRED_IN_ARCHIVE=(
     Dockerfile
     Cargo.toml
@@ -94,7 +95,8 @@ REQUIRED_IN_ARCHIVE=(
     deploy/entrypoint.sh
     control-tower/Dockerfile
     control-tower/package.json
-    control-tower/package-lock.json
+    control-tower/pnpm-lock.yaml
+    control-tower/pnpm-workspace.yaml
     deploy/ami/provision.sh
     deploy/ami/docker-compose.yml
     deploy/ami/nginx.conf

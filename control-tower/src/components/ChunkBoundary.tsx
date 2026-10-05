@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { Component, type ReactNode } from 'react';
+import { Component, type ReactNode } from "react";
 
 // ── Chunk-load boundary ───────────────────────────────────────────────────────
 //
@@ -53,7 +53,7 @@ export default class ChunkBoundary extends Component<Props, State> {
   componentDidCatch(error: Error) {
     // Left in the console deliberately — the operator sees the panel below,
     // but a support conversation wants the original message.
-    console.error('[DRADIS] panel failed to load:', error);
+    console.error("[DRADIS] panel failed to load:", error);
   }
 
   render() {
@@ -66,17 +66,15 @@ export default class ChunkBoundary extends Component<Props, State> {
       <div className="card p-6 flex flex-col items-center justify-center gap-3 text-center">
         <span className="text-2xl opacity-40">📡</span>
         <div>
-          <p className="text-sm font-mono text-gray-300">
-            {this.props.name} could not be loaded
-          </p>
-          <p className="text-[11px] text-gray-500 mt-1 max-w-md leading-relaxed">
-            Its code failed to download. The engine and your squadrons are
-            unaffected — this is the dashboard only.
+          <p className="text-sm font-mono text-gray-300">{this.props.name} could not be loaded</p>
+          <p className="text-2xs text-gray-500 mt-1 max-w-md leading-relaxed">
+            Its code failed to download. The engine and your squadrons are unaffected — this is the
+            dashboard only.
           </p>
         </div>
         <button
           onClick={() => this.setState({ error: null, attempt: attempt + 1 })}
-          className="text-[11px] font-mono border border-indigo-500/30 text-indigo-300
+          className="text-2xs font-mono border border-indigo-500/30 text-indigo-300
                      bg-indigo-500/10 rounded px-3 py-1.5 hover:bg-indigo-500/20 transition-colors"
         >
           Try again

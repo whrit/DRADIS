@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -28,9 +28,10 @@
  * hard US-person warning; the US build a lighter eligibility note.
  */
 
-import { useState } from 'react';
-import { acknowledgeAlpha } from '@/lib/setupApi';
-import type { VenueId, Edition } from '@/lib/setupApi';
+import { useState } from "react";
+import { acknowledgeAlpha } from "@/lib/setupApi";
+import type { VenueId, Edition } from "@/lib/setupApi";
+import { REPO_URL } from "@/lib/demo";
 
 /** Display name per venue — used in the header, the jurisdiction heading, and
  *  the confirmation checkbox, so a Kalshi build never labels itself "US". */
@@ -40,12 +41,10 @@ import type { VenueId, Edition } from '@/lib/setupApi';
 // customer would recognise — and this modal is the first thing they see, where
 // they are being asked to confirm eligibility to trade on that exact venue.
 const VENUE_NAME: Record<VenueId, string> = {
-  intl:   'Polymarket International',
-  us:     'Polymarket US',
-  kalshi: 'Kalshi',
+  intl: "Polymarket International",
+  us: "Polymarket US",
+  kalshi: "Kalshi",
 };
-
-const REPO_URL = 'https://github.com/mbordash/DRADIS';
 
 export default function AlphaGate({
   venue,
@@ -84,17 +83,17 @@ export default function AlphaGate({
         onAcknowledged();
         return;
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '';
+        const msg = e instanceof Error ? e.message : "";
         const stillStarting = /not ready|503|unavailable/i.test(msg);
         if (stillStarting && attempt < DELAYS_MS.length) {
-          setError('Engine is still starting — retrying…');
-          await new Promise(r => setTimeout(r, DELAYS_MS[attempt]));
+          setError("Engine is still starting — retrying…");
+          await new Promise((r) => setTimeout(r, DELAYS_MS[attempt]));
           continue;
         }
         setError(
           stillStarting
             ? 'The engine is reachable but its database has not opened. If this persists past a minute it is not a slow start — check the engine log for "SQLite init failed".'
-            : msg || 'Failed to record acknowledgment — is the engine reachable?',
+            : msg || "Failed to record acknowledgment — is the engine reachable?",
         );
         setBusy(false);
         return;
@@ -103,16 +102,16 @@ export default function AlphaGate({
   };
 
   const checkboxCls =
-    'mt-0.5 h-4 w-4 shrink-0 rounded border-gray-600 bg-[#0e0e18] accent-amber-500 cursor-pointer';
+    "mt-0.5 h-4 w-4 shrink-0 rounded border-gray-600 bg-surface-inset accent-amber-500 cursor-pointer";
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-100 overflow-y-auto bg-black/80 backdrop-blur-sm">
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl bg-[#13131f] border border-amber-500/40 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
+        <div className="w-full max-w-2xl bg-surface-card border border-amber-500/40 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-mono text-gray-100">
               DRADIS {VENUE_NAME[venue]}
-              {appVersion ? ` v${appVersion}` : ''} — read before proceeding
+              {appVersion ? ` v${appVersion}` : ""} — read before proceeding
             </h2>
           </div>
 
@@ -120,54 +119,82 @@ export default function AlphaGate({
           <div className="bg-red-950/40 border border-red-500/30 rounded-xl p-4 space-y-2">
             <h3 className="text-sm font-mono text-red-300">⚠️ Real-money risk</h3>
             <ul className="text-xs text-red-200/90 space-y-1 list-disc pl-4">
-              <li>DRADIS is <strong>trading automation software provided AS IS</strong>. It places live orders with real funds and can <strong>lose some or all of the capital</strong> you give it access to.</li>
-              <li>Automated trading involves substantial risk of loss: software bugs, security issues, network latency, API rate limits, venue outages, slippage, or misconfiguration can produce unintended trades and <strong>total loss of deployed capital</strong>. Start in GHOST mode and with money you can afford to lose entirely.</li>
+              <li>
+                DRADIS is <strong>trading automation software provided AS IS</strong>. It places
+                live orders with real funds and can <strong>lose some or all of the capital</strong>{" "}
+                you give it access to.
+              </li>
+              <li>
+                Automated trading involves substantial risk of loss: software bugs, security issues,
+                network latency, API rate limits, venue outages, slippage, or misconfiguration can
+                produce unintended trades and <strong>total loss of deployed capital</strong>. Start
+                in GHOST mode and with money you can afford to lose entirely.
+              </li>
               {/* The licence an operator holds depends on how they obtained
                   DRADIS. A Marketplace subscription carries commercial terms —
                   telling those customers they hold an AGPL grant is simply
                   wrong, and it was naming GPLv3 rather than AGPLv3 besides. */}
-              {edition === 'marketplace' ? (
+              {edition === "marketplace" ? (
                 <li>
-                  Licensed under the commercial terms of your AWS Marketplace subscription,{' '}
+                  Licensed under the commercial terms of your AWS Marketplace subscription,{" "}
                   <strong>without warranty of any kind</strong>. Nothing here is financial advice.
                 </li>
               ) : (
                 <li>
-                  Provided under the <strong>AGPLv3</strong>, without warranty of any kind.
-                  Nothing here is financial advice.
+                  Provided under the <strong>AGPLv3</strong>, without warranty of any kind. Nothing
+                  here is financial advice.
                 </li>
               )}
             </ul>
           </div>
 
           {/* ── Legal status ─────────────────────────────────────────────── */}
-          <div className="bg-[#0e0e18] border border-[#1e1e32] rounded-xl p-4 space-y-2">
-            <h3 className="text-sm font-mono text-gray-300">📜 Software, not a financial service</h3>
+          <div className="bg-surface-inset border border-surface-border rounded-xl p-4 space-y-2">
+            <h3 className="text-sm font-mono text-gray-300">
+              📜 Software, not a financial service
+            </h3>
             <ul className="text-xs text-gray-400 space-y-1 list-disc pl-4">
-              <li><strong className="text-gray-300">Non-custodial:</strong> DRADIS is self-hosted software. Your private keys, API keys, and funds stay exclusively on this instance under your control — the developers never store, access, or take custody of them.</li>
-              <li><strong className="text-gray-300">Not a broker or adviser:</strong> this is a self-hosted automation tool. The developers are not acting as a broker, dealer, investment adviser, or money transmitter, and no strategy signal or AI recommendation produced by the engine constitutes financial or investment advice.</li>
-              <li><strong className="text-gray-300">Limitation of liability:</strong> to the maximum extent permitted by law, the developers and contributors are not liable for any direct, indirect, incidental, special, consequential, or punitive damages — including loss of funds, profits, or data — arising from use of, or inability to use, this software.</li>
+              <li>
+                <strong className="text-gray-300">Non-custodial:</strong> DRADIS is self-hosted
+                software. Your private keys, API keys, and funds stay exclusively on this instance
+                under your control — the developers never store, access, or take custody of them.
+              </li>
+              <li>
+                <strong className="text-gray-300">Not a broker or adviser:</strong> this is a
+                self-hosted automation tool. The developers are not acting as a broker, dealer,
+                investment adviser, or money transmitter, and no strategy signal or AI
+                recommendation produced by the engine constitutes financial or investment advice.
+              </li>
+              <li>
+                <strong className="text-gray-300">Limitation of liability:</strong> to the maximum
+                extent permitted by law, the developers and contributors are not liable for any
+                direct, indirect, incidental, special, consequential, or punitive damages —
+                including loss of funds, profits, or data — arising from use of, or inability to
+                use, this software.
+              </li>
             </ul>
           </div>
 
           {/* ── Jurisdiction ─────────────────────────────────────────────── */}
           <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-4 space-y-2">
-            <h3 className="text-sm font-mono text-amber-300">🌍 Jurisdiction — {VENUE_NAME[venue]} venue</h3>
-            {venue === 'intl' ? (
+            <h3 className="text-sm font-mono text-amber-300">
+              🌍 Jurisdiction — {VENUE_NAME[venue]} venue
+            </h3>
+            {venue === "intl" ? (
               <p className="text-xs text-amber-200/90">
-                This build trades on Polymarket&apos;s <strong>international CLOB</strong>, which is{' '}
-                <strong>not available to US persons</strong>. If you are a US person, do not use this
-                venue — switch this instance to <strong>Polymarket US</strong> or <strong>Kalshi</strong>{' '}
-                in Setup instead. By continuing you
-                confirm you are legally permitted to trade on this venue in your jurisdiction and that
-                you bear <strong>sole legal responsibility</strong> for that determination; the DRADIS
+                This build trades on Polymarket&apos;s <strong>international CLOB</strong>, which is{" "}
+                <strong>not available to US persons</strong>. If you are a US person, do not use
+                this venue — switch this instance to <strong>Polymarket US</strong> or{" "}
+                <strong>Kalshi</strong> in Setup instead. By continuing you confirm you are legally
+                permitted to trade on this venue in your jurisdiction and that you bear{" "}
+                <strong>sole legal responsibility</strong> for that determination; the DRADIS
                 project accepts none.
               </p>
             ) : (
               <p className="text-xs text-amber-200/90">
-                This build trades on <strong>US-regulated venues</strong>. You remain responsible for
-                confirming that you are eligible to trade on these venues under the laws that apply to
-                you (state, residency, and account eligibility rules included).
+                This build trades on <strong>US-regulated venues</strong>. You remain responsible
+                for confirming that you are eligible to trade on these venues under the laws that
+                apply to you (state, residency, and account eligibility rules included).
               </p>
             )}
           </div>
@@ -177,29 +204,66 @@ export default function AlphaGate({
               community wording below is honest for a free self-hosted build and
               would be unacceptable — quite possibly rejected — on a Marketplace
               product someone paid for. */}
-          {edition === 'marketplace' ? (
-            <div className="bg-[#0e0e18] border border-[#1e1e32] rounded-xl p-4 space-y-2">
+          {edition === "marketplace" ? (
+            <div className="bg-surface-inset border border-surface-border rounded-xl p-4 space-y-2">
               <h3 className="text-sm font-mono text-gray-300">🛟 Support</h3>
               <ul className="text-xs text-gray-400 space-y-1 list-disc pl-4">
-                <li>Get help at{' '}
-                  <a href="https://dradis.live/support" target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">dradis.live/support</a>{' '}
+                <li>
+                  Get help at{" "}
+                  <a
+                    href="https://dradis.live/support"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-400 hover:underline"
+                  >
+                    dradis.live/support
+                  </a>{" "}
                   — the form collects what is needed to diagnose a deployment.
                 </li>
-                <li>Or email{' '}
-                  <a href="mailto:support@dradis.live" className="text-sky-400 hover:underline">support@dradis.live</a>.
+                <li>
+                  Or email{" "}
+                  <a href="mailto:support@dradis.live" className="text-sky-400 hover:underline">
+                    support@dradis.live
+                  </a>
+                  .
                 </li>
-                <li><strong className="text-gray-300">Support will never ask for your wallet private key, seed phrase or API secrets.</strong> Anyone who does is not us.</li>
+                <li>
+                  <strong className="text-gray-300">
+                    Support will never ask for your wallet private key, seed phrase or API secrets.
+                  </strong>{" "}
+                  Anyone who does is not us.
+                </li>
               </ul>
             </div>
           ) : (
-            <div className="bg-[#0e0e18] border border-[#1e1e32] rounded-xl p-4 space-y-2">
+            <div className="bg-surface-inset border border-surface-border rounded-xl p-4 space-y-2">
               <h3 className="text-sm font-mono text-gray-300">🧪 Community-supported software</h3>
               <ul className="text-xs text-gray-400 space-y-1 list-disc pl-4">
-                <li>Individual support is not included. For setup help, ask an AI assistant (ChatGPT, Gemini, Claude) — paste in the README and your question; they are very good at this.</li>
-                <li>Report bugs via{' '}
-                  <a href={`${REPO_URL}/issues`} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">GitHub Issues</a>{' '}
-                  and request enhancements via{' '}
-                  <a href={`${REPO_URL}/discussions`} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">GitHub Discussions</a>.
+                <li>
+                  Individual support is not included. For setup help, ask an AI assistant (ChatGPT,
+                  Gemini, Claude) — paste in the README and your question; they are very good at
+                  this.
+                </li>
+                <li>
+                  Report bugs via{" "}
+                  <a
+                    href={`${REPO_URL}/issues`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-400 hover:underline"
+                  >
+                    GitHub Issues
+                  </a>{" "}
+                  and request enhancements via{" "}
+                  <a
+                    href={`${REPO_URL}/discussions`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-400 hover:underline"
+                  >
+                    GitHub Discussions
+                  </a>
+                  .
                 </li>
               </ul>
             </div>
@@ -208,21 +272,37 @@ export default function AlphaGate({
           {/* ── Acknowledgment ───────────────────────────────────────────── */}
           <div className="space-y-2.5">
             <label className="flex items-start gap-2.5 text-xs text-gray-300 cursor-pointer">
-              <input type="checkbox" className={checkboxCls} checked={riskOk} onChange={e => setRiskOk(e.target.checked)} />
-              <span>I understand this software trades real money and can lose it, is provided AS IS without warranty or individual support, and I accept these risks and the non-custodial, no-advice, and limitation-of-liability terms above.</span>
+              <input
+                type="checkbox"
+                className={checkboxCls}
+                checked={riskOk}
+                onChange={(e) => setRiskOk(e.target.checked)}
+              />
+              <span>
+                I understand this software trades real money and can lose it, is provided AS IS
+                without warranty or individual support, and I accept these risks and the
+                non-custodial, no-advice, and limitation-of-liability terms above.
+              </span>
             </label>
             <label className="flex items-start gap-2.5 text-xs text-gray-300 cursor-pointer">
-              <input type="checkbox" className={checkboxCls} checked={jurisdictionOk} onChange={e => setJurisdictionOk(e.target.checked)} />
+              <input
+                type="checkbox"
+                className={checkboxCls}
+                checked={jurisdictionOk}
+                onChange={(e) => setJurisdictionOk(e.target.checked)}
+              />
               <span>
-                {venue === 'intl'
-                  ? 'I confirm I am legally permitted to trade on the international venue this build connects to, and I bear sole legal responsibility for that determination.'
+                {venue === "intl"
+                  ? "I confirm I am legally permitted to trade on the international venue this build connects to, and I bear sole legal responsibility for that determination."
                   : `I confirm I am eligible to trade on ${VENUE_NAME[venue]}, a US-regulated venue, under the laws that apply to me.`}
               </span>
             </label>
           </div>
 
           {error && (
-            <div className="text-xs font-mono text-red-300 bg-red-950/50 rounded-lg px-3 py-2">{error}</div>
+            <div className="text-xs font-mono text-red-300 bg-red-950/50 rounded-lg px-3 py-2">
+              {error}
+            </div>
           )}
 
           <button
@@ -230,19 +310,19 @@ export default function AlphaGate({
             disabled={!riskOk || !jurisdictionOk || busy}
             className="w-full py-2.5 rounded-lg font-mono text-sm bg-amber-500 text-black font-semibold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-amber-400 transition-colors"
           >
-            {busy ? 'Recording…' : 'I acknowledge — continue to DRADIS'}
+            {busy ? "Recording…" : "I acknowledge — continue to DRADIS"}
           </button>
 
           {onBack && !busy && (
             <button
               onClick={onBack}
-              className="w-full text-[11px] font-mono text-gray-500 hover:text-gray-300 underline underline-offset-2"
+              className="w-full text-2xs font-mono text-gray-500 hover:text-gray-300 underline underline-offset-2"
             >
               ← Not {VENUE_NAME[venue]}? Choose a different trading venue
             </button>
           )}
 
-          <p className="text-[10px] text-gray-600 font-mono text-center">
+          <p className="text-3xs text-gray-600 font-mono text-center">
             Your acknowledgment is recorded with a timestamp on this instance.
           </p>
         </div>

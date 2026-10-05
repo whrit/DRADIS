@@ -33,7 +33,7 @@ cargo check --no-default-features --features us_retail
 cargo check --no-default-features --features kalshi
 
 # Control Tower
-cd control-tower && npx tsc --noEmit && npx next build
+cd control-tower && pnpm check && pnpm build
 ```
 
 A change that compiles under the default `intl_clob` feature can still break the

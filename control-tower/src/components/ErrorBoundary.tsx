@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { Component, type ReactNode } from 'react';
+import { Component, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -45,7 +45,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: unknown) {
     // Surface to the console for debugging; no external reporting.
-    console.error(`[${this.props.label ?? 'view'}] render error:`, error, info);
+    console.error(`[${this.props.label ?? "view"}] render error:`, error, info);
   }
 
   reset = () => this.setState({ error: null });
@@ -54,9 +54,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="card px-4 py-3 border border-red-500/30 bg-red-500/5 text-red-300 text-xs font-mono space-y-2">
-          <p className="font-semibold">
-            {this.props.label ?? 'This view'} failed to render.
-          </p>
+          <p className="font-semibold">{this.props.label ?? "This view"} failed to render.</p>
           <p className="text-red-400/80 break-all">{this.state.error.message}</p>
           <button
             onClick={this.reset}
@@ -70,4 +68,3 @@ export default class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
-

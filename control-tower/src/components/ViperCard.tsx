@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,37 +16,61 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { useState, useCallback } from 'react';
-import useSWR from 'swr';
-import type { DynamicConfig, ViperDef, ConfigFieldSchema, FieldType } from '@/lib/types';
-import { toDisplay, fromDisplay, fieldUnit, NO_MARKET_LABEL } from '@/lib/types';
-import { getConfigSchema, refusalText, type ViperStatusRow } from '@/lib/api';
-import { DEMO_MODE } from '@/lib/demo';
-import AdvancedConfigModal from '@/components/AdvancedConfigModal';
+import { useState, useCallback } from "react";
+import useSWR from "swr";
+import type { DynamicConfig, ViperDef, ConfigFieldSchema, FieldType } from "@/lib/types";
+import { toDisplay, fromDisplay, fieldUnit, NO_MARKET_LABEL } from "@/lib/types";
+import { getConfigSchema, refusalText, type ViperStatusRow } from "@/lib/api";
+import { DEMO_MODE } from "@/lib/demo";
+import AdvancedConfigModal from "@/components/AdvancedConfigModal";
 
 // ── Accent color helpers ──────────────────────────────────────────────────────
 
 const ACCENT: Record<string, { ring: string; badge: string; dot: string }> = {
-  indigo:  { ring: 'ring-indigo-500/30',  badge: 'bg-indigo-500/10 text-indigo-300',  dot: 'bg-indigo-500'  },
-  blue:    { ring: 'ring-blue-500/30',    badge: 'bg-blue-500/10 text-blue-300',      dot: 'bg-blue-500'    },
-  emerald: { ring: 'ring-emerald-500/30', badge: 'bg-emerald-500/10 text-emerald-300',dot: 'bg-emerald-500' },
-  orange:  { ring: 'ring-orange-500/30',  badge: 'bg-orange-500/10 text-orange-300',  dot: 'bg-orange-500'  },
-  purple:  { ring: 'ring-purple-500/30',  badge: 'bg-purple-500/10 text-purple-300',  dot: 'bg-purple-500'  },
-  cyan:    { ring: 'ring-cyan-500/30',    badge: 'bg-cyan-500/10 text-cyan-300',      dot: 'bg-cyan-500'    },
-  violet:  { ring: 'ring-violet-500/30',  badge: 'bg-violet-500/10 text-violet-300',  dot: 'bg-violet-500'  },
+  indigo: {
+    ring: "ring-indigo-500/30",
+    badge: "bg-indigo-500/10 text-indigo-300",
+    dot: "bg-indigo-500",
+  },
+  blue: { ring: "ring-blue-500/30", badge: "bg-blue-500/10 text-blue-300", dot: "bg-blue-500" },
+  emerald: {
+    ring: "ring-emerald-500/30",
+    badge: "bg-emerald-500/10 text-emerald-300",
+    dot: "bg-emerald-500",
+  },
+  orange: {
+    ring: "ring-orange-500/30",
+    badge: "bg-orange-500/10 text-orange-300",
+    dot: "bg-orange-500",
+  },
+  purple: {
+    ring: "ring-purple-500/30",
+    badge: "bg-purple-500/10 text-purple-300",
+    dot: "bg-purple-500",
+  },
+  cyan: { ring: "ring-cyan-500/30", badge: "bg-cyan-500/10 text-cyan-300", dot: "bg-cyan-500" },
+  violet: {
+    ring: "ring-violet-500/30",
+    badge: "bg-violet-500/10 text-violet-300",
+    dot: "bg-violet-500",
+  },
   // Arbitrage, Basis and FairValue have named these since they shipped, but
   // the map had no entry for them, so all three silently rendered as indigo —
   // identical to Time Decay's card and to each other's.
-  teal:    { ring: 'ring-teal-500/30',    badge: 'bg-teal-500/10 text-teal-300',      dot: 'bg-teal-500'    },
-  rose:    { ring: 'ring-rose-500/30',    badge: 'bg-rose-500/10 text-rose-300',      dot: 'bg-rose-500'    },
-  amber:   { ring: 'ring-amber-500/30',   badge: 'bg-amber-500/10 text-amber-300',    dot: 'bg-amber-500'   },
+  teal: { ring: "ring-teal-500/30", badge: "bg-teal-500/10 text-teal-300", dot: "bg-teal-500" },
+  rose: { ring: "ring-rose-500/30", badge: "bg-rose-500/10 text-rose-300", dot: "bg-rose-500" },
+  amber: {
+    ring: "ring-amber-500/30",
+    badge: "bg-amber-500/10 text-amber-300",
+    dot: "bg-amber-500",
+  },
 };
 
 // ── Runtime status helpers ────────────────────────────────────────────────────
 
 /** Duration, e.g. "12m". */
 export function fmtDur(secs: number | null | undefined): string {
-  if (secs === null || secs === undefined) return '—';
+  if (secs === null || secs === undefined) return "—";
   if (secs < 60) return `${secs}s`;
   if (secs < 3600) return `${Math.floor(secs / 60)}m`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
@@ -55,15 +79,15 @@ export function fmtDur(secs: number | null | undefined): string {
 
 /** Relative age, e.g. "12m ago". */
 export function fmtAgo(secs: number | null | undefined): string {
-  if (secs === null || secs === undefined) return '—';
-  if (secs < 5) return 'just now';
+  if (secs === null || secs === undefined) return "—";
+  if (secs < 5) return "just now";
   return `${fmtDur(secs)} ago`;
 }
 
 /** Evaluations tick sub-second; nothing for 2 minutes means the loop is wedged. */
 export const STALE_EVAL_SECS = 120;
 
-type RuntimeState = 'DISABLED' | 'PENDING' | 'STALE' | 'ERROR' | 'TIMEOUT' | 'WAITING' | 'ACTIVE';
+type RuntimeState = "DISABLED" | "PENDING" | "STALE" | "ERROR" | "TIMEOUT" | "WAITING" | "ACTIVE";
 
 /**
  * Is this row a fault the operator should look at?
@@ -79,9 +103,11 @@ type RuntimeState = 'DISABLED' | 'PENDING' | 'STALE' | 'ERROR' | 'TIMEOUT' | 'WA
  * such waiting vipers as "9 stale/error" on a healthy system.
  */
 export function isTroubled(status: ViperStatusRow): boolean {
-  return status.last_eval_secs_ago > STALE_EVAL_SECS
-    || status.last_outcome === 'error'
-    || status.last_outcome === 'timeout';
+  return (
+    status.last_eval_secs_ago > STALE_EVAL_SECS ||
+    status.last_outcome === "error" ||
+    status.last_outcome === "timeout"
+  );
 }
 
 /**
@@ -92,43 +118,69 @@ export function isTroubled(status: ViperStatusRow): boolean {
  * WAITING means the squadron holds no market right now; see `isTroubled`.
  */
 export function runtimeState(enabled: boolean, status?: ViperStatusRow): RuntimeState {
-  if (!enabled) return 'DISABLED';
-  if (!status) return 'PENDING';
-  if (status.last_eval_secs_ago > STALE_EVAL_SECS) return 'STALE';
-  if (status.last_outcome === 'error') return 'ERROR';
-  if (status.last_outcome === 'timeout') return 'TIMEOUT';
-  if (status.last_outcome === 'idle') return 'WAITING';
-  return 'ACTIVE';
+  if (!enabled) return "DISABLED";
+  if (!status) return "PENDING";
+  if (status.last_eval_secs_ago > STALE_EVAL_SECS) return "STALE";
+  if (status.last_outcome === "error") return "ERROR";
+  if (status.last_outcome === "timeout") return "TIMEOUT";
+  if (status.last_outcome === "idle") return "WAITING";
+  return "ACTIVE";
 }
 
-const STATE_BADGE: Record<Exclude<RuntimeState, 'ACTIVE'>, { cls: string; title: string }> = {
-  DISABLED: { cls: 'bg-gray-800 text-gray-600', title: 'Turned off in this squadron’s config' },
-  PENDING:  { cls: 'bg-gray-800 text-gray-500', title: 'Enabled, but the engine has not reported an evaluation yet' },
-  STALE:    { cls: 'bg-red-500/10 text-red-400 border border-red-500/30', title: `No evaluation in over ${STALE_EVAL_SECS}s — the patrol loop may be wedged` },
-  ERROR:    { cls: 'bg-red-500/10 text-red-400 border border-red-500/30', title: 'Last evaluate_entry returned an error' },
-  TIMEOUT:  { cls: 'bg-amber-500/10 text-amber-300 border border-amber-500/30', title: 'Last evaluation exceeded the executor timeout' },
-  WAITING:  { cls: 'bg-gray-800 text-gray-400 border border-gray-700', title: 'The squadron holds no tradeable market right now. The engine is alive and will evaluate again as soon as one opens.' },
+const STATE_BADGE: Record<Exclude<RuntimeState, "ACTIVE">, { cls: string; title: string }> = {
+  DISABLED: { cls: "bg-gray-800 text-gray-600", title: "Turned off in this squadron’s config" },
+  PENDING: {
+    cls: "bg-gray-800 text-gray-500",
+    title: "Enabled, but the engine has not reported an evaluation yet",
+  },
+  STALE: {
+    cls: "bg-red-500/10 text-red-400 border border-red-500/30",
+    title: `No evaluation in over ${STALE_EVAL_SECS}s — the patrol loop may be wedged`,
+  },
+  ERROR: {
+    cls: "bg-red-500/10 text-red-400 border border-red-500/30",
+    title: "Last evaluate_entry returned an error",
+  },
+  TIMEOUT: {
+    cls: "bg-amber-500/10 text-amber-300 border border-amber-500/30",
+    title: "Last evaluation exceeded the executor timeout",
+  },
+  WAITING: {
+    cls: "bg-gray-800 text-gray-400 border border-gray-700",
+    title:
+      "The squadron holds no tradeable market right now. The engine is alive and will evaluate again as soon as one opens.",
+  },
 };
 
 // ── Toggle switch ─────────────────────────────────────────────────────────────
 
-function Toggle({ enabled, onToggle, loading }: { enabled: boolean; onToggle: () => void; loading?: boolean }) {
+function Toggle({
+  enabled,
+  onToggle,
+  loading,
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+  loading?: boolean;
+}) {
   return (
     <button
       onClick={onToggle}
       disabled={loading}
-      title={enabled ? 'Click to disable' : 'Click to enable'}
+      title={enabled ? "Click to disable" : "Click to enable"}
       className={[
-        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200',
-        'focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-[#13131f]',
-        enabled ? 'bg-green-500 focus:ring-green-500' : 'bg-gray-700 focus:ring-gray-500',
-        loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-      ].join(' ')}
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200",
+        "focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-surface-card",
+        enabled ? "bg-green-500 focus:ring-green-500" : "bg-gray-700 focus:ring-gray-500",
+        loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+      ].join(" ")}
     >
-      <span className={[
-        'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200',
-        enabled ? 'translate-x-[18px]' : 'translate-x-[3px]',
-      ].join(' ')} />
+      <span
+        className={[
+          "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200",
+          enabled ? "translate-x-[18px]" : "translate-x-[3px]",
+        ].join(" ")}
+      />
     </button>
   );
 }
@@ -136,9 +188,9 @@ function Toggle({ enabled, onToggle, loading }: { enabled: boolean; onToggle: ()
 // ── Editable param row ────────────────────────────────────────────────────────
 
 interface ParamRowProps {
-  field:    ConfigFieldSchema;
-  config:   DynamicConfig;
-  onPatch:  (patch: Partial<DynamicConfig>) => Promise<void>;
+  field: ConfigFieldSchema;
+  config: DynamicConfig;
+  onPatch: (patch: Partial<DynamicConfig>) => Promise<void>;
   disabled: boolean;
 }
 
@@ -165,7 +217,7 @@ function BoolRow({ field, config, onPatch, disabled }: ParamRowProps) {
     try {
       await onPatch({ [cfgKey]: !value } as Partial<DynamicConfig>);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'failed');
+      setErr(e instanceof Error ? e.message : "failed");
     } finally {
       setBusy(false);
     }
@@ -173,11 +225,11 @@ function BoolRow({ field, config, onPatch, disabled }: ParamRowProps) {
 
   return (
     <div className="flex items-center justify-between gap-2 py-0.5">
-      <span className="text-[11px] font-mono text-gray-400 truncate" title={field.description}>
+      <span className="text-2xs font-mono text-gray-400 truncate" title={field.description}>
         {field.label}
       </span>
       <div className="flex items-center gap-2 shrink-0">
-        {err && <span className="text-[10px] font-mono text-red-400">{err}</span>}
+        {err && <span className="text-3xs font-mono text-red-400">{err}</span>}
         <Toggle enabled={value} onToggle={flip} loading={busy || DEMO_MODE || disabled} />
       </div>
     </div>
@@ -185,14 +237,14 @@ function BoolRow({ field, config, onPatch, disabled }: ParamRowProps) {
 }
 
 function ParamRow({ field, config, onPatch, disabled }: ParamRowProps) {
-  const type     = field.type as FieldType;
-  const cfgKey   = field.key as keyof DynamicConfig;
+  const type = field.type as FieldType;
+  const cfgKey = field.key as keyof DynamicConfig;
   const rawValue = config[cfgKey];
-  const initial  = toDisplay(type, rawValue as string);
-  const [draft,    setDraft]    = useState(initial);
+  const initial = toDisplay(type, rawValue as string);
+  const [draft, setDraft] = useState(initial);
   const [editMode, setEditMode] = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [saveErr,  setSaveErr]  = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
   // Reset draft when config prop changes (e.g. after a remote patch)
   const display = editMode ? draft : toDisplay(type, rawValue as string);
@@ -200,7 +252,7 @@ function ParamRow({ field, config, onPatch, disabled }: ParamRowProps) {
   const commit = useCallback(async () => {
     setEditMode(false);
     const stored = fromDisplay(type, draft);
-    const prev   = fromDisplay(type, toDisplay(type, rawValue as string));
+    const prev = fromDisplay(type, toDisplay(type, rawValue as string));
     if (stored === prev) return;
     // Hold the schema's declared range here, the same way the advanced modal
     // and the advisor's proposal validator do. This row used to send whatever
@@ -214,7 +266,9 @@ function ParamRow({ field, config, onPatch, disabled }: ParamRowProps) {
       if (below || above) {
         const lo = field.min != null ? toDisplay(type, field.min) : null;
         const hi = field.max != null ? toDisplay(type, field.max) : null;
-        setSaveErr(`out of range (${[lo != null ? `min ${lo}` : null, hi != null ? `max ${hi}` : null].filter(Boolean).join(', ')})`);
+        setSaveErr(
+          `out of range (${[lo != null ? `min ${lo}` : null, hi != null ? `max ${hi}` : null].filter(Boolean).join(", ")})`,
+        );
         return;
       }
     }
@@ -230,7 +284,7 @@ function ParamRow({ field, config, onPatch, disabled }: ParamRowProps) {
   }, [draft, field.key, type, rawValue, onPatch]);
 
   return (
-    <div className="flex flex-wrap items-center justify-between py-1 border-b border-[#1e1e32] last:border-0">
+    <div className="flex flex-wrap items-center justify-between py-1 border-b border-surface-border last:border-0">
       <span className="text-xs text-gray-500 truncate mr-2">{field.label}</span>
       <div className="flex items-center gap-1">
         {editMode ? (
@@ -239,29 +293,40 @@ function ParamRow({ field, config, onPatch, disabled }: ParamRowProps) {
             value={display}
             autoFocus
             disabled={disabled || saving}
-            onChange={e => setDraft(e.target.value)}
+            onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
-            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditMode(false); setDraft(initial); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setEditMode(false);
+                setDraft(initial);
+              }
+            }}
           />
         ) : (
           <button
-            onClick={() => { if (!disabled) { setDraft(toDisplay(type, rawValue as string)); setEditMode(true); } }}
+            onClick={() => {
+              if (!disabled) {
+                setDraft(toDisplay(type, rawValue as string));
+                setEditMode(true);
+              }
+            }}
             disabled={disabled || saving}
             className={[
-              'text-xs font-mono tabular-nums px-2 py-1 rounded',
-              'hover:bg-[#1a1a2e] transition-colors text-right w-20',
-              disabled ? 'text-gray-600 cursor-default' : 'text-gray-200 cursor-text',
-              saving ? 'opacity-50' : '',
-            ].join(' ')}
+              "text-xs font-mono tabular-nums px-2 py-1 rounded",
+              "hover:bg-surface-hover transition-colors text-right w-20",
+              disabled ? "text-gray-600 cursor-default" : "text-gray-200 cursor-text",
+              saving ? "opacity-50" : "",
+            ].join(" ")}
           >
-            {saving ? '…' : toDisplay(type, rawValue as string)}
+            {saving ? "…" : toDisplay(type, rawValue as string)}
           </button>
         )}
-        {fieldUnit(type) && (
-          <span className="text-xs text-gray-600 w-8">{fieldUnit(type)}</span>
-        )}
+        {fieldUnit(type) && <span className="text-xs text-gray-600 w-8">{fieldUnit(type)}</span>}
       </div>
-      {saveErr && <span className="basis-full text-[10px] font-mono text-red-400 text-right">{saveErr}</span>}
+      {saveErr && (
+        <span className="basis-full text-3xs font-mono text-red-400 text-right">{saveErr}</span>
+      )}
     </div>
   );
 }
@@ -269,8 +334,8 @@ function ParamRow({ field, config, onPatch, disabled }: ParamRowProps) {
 // ── ViperCard ─────────────────────────────────────────────────────────────────
 
 interface Props {
-  viper:   ViperDef;
-  config:  DynamicConfig;
+  viper: ViperDef;
+  config: DynamicConfig;
   onPatch: (patch: Partial<DynamicConfig>) => Promise<void>;
   /** Active market name returned by /api/status */
   market?: string;
@@ -281,22 +346,22 @@ interface Props {
 export default function ViperCard({ viper, config, onPatch, market, status }: Props) {
   const [toggling, setToggling] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const enabled  = config[viper.enableKey] as boolean;
-  const accent   = ACCENT[viper.accentColor] ?? ACCENT.indigo;
+  const enabled = config[viper.enableKey] as boolean;
+  const accent = ACCENT[viper.accentColor] ?? ACCENT.indigo;
 
   // Basic params are derived from the Rust schema registry (single source of
   // truth) — `advanced:false`, non-bool fields for this viper group. Shared SWR
   // key dedupes with the Advanced modal's fetch.
-  const { data: schema = [], isLoading: schemaLoading } = useSWR('config-schema', getConfigSchema, {
+  const { data: schema = [], isLoading: schemaLoading } = useSWR("config-schema", getConfigSchema, {
     revalidateOnFocus: false,
   });
   const basicFields = schema.filter(
-    f => f.group === viper.name && !f.advanced && f.type !== 'bool',
+    (f) => f.group === viper.name && !f.advanced && f.type !== "bool",
   );
   // Bools too, minus the card's own on/off switch, which is rendered in the
   // header. Without this they appear nowhere in the UI at all.
   const basicBools = schema.filter(
-    f => f.group === viper.name && !f.advanced && f.type === 'bool' && f.key !== viper.enableKey,
+    (f) => f.group === viper.name && !f.advanced && f.type === "bool" && f.key !== viper.enableKey,
   );
 
   const [toggleErr, setToggleErr] = useState<string | null>(null);
@@ -314,19 +379,23 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
   };
 
   return (
-    <div className={[
-      'card p-4 flex flex-col gap-3 transition-all duration-200',
-      enabled ? `ring-1 ${accent.ring}` : 'opacity-60',
-    ].join(' ')}>
+    <div
+      className={[
+        "card p-4 flex flex-col gap-3 transition-all duration-200",
+        enabled ? `ring-1 ${accent.ring}` : "opacity-60",
+      ].join(" ")}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${enabled ? accent.dot : 'bg-gray-700'}`} />
+          <span
+            className={`inline-block h-2 w-2 rounded-full shrink-0 ${enabled ? accent.dot : "bg-gray-700"}`}
+          />
           <span className="text-sm font-semibold text-white truncate">{viper.name}</span>
         </div>
         <Toggle enabled={enabled} onToggle={handleToggle} loading={toggling || DEMO_MODE} />
       </div>
-      {toggleErr && <p className="text-[10px] font-mono text-red-400 -mt-2">{toggleErr}</p>}
+      {toggleErr && <p className="text-3xs font-mono text-red-400 -mt-2">{toggleErr}</p>}
 
       {/* Description */}
       <p className="text-xs text-gray-500 leading-snug">{viper.description}</p>
@@ -334,7 +403,7 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
       {/* Active market */}
       {market && market.length > 0 && (
         <div
-          className="flex items-center gap-1.5 text-xs text-gray-400 bg-[#0f0f1a] border border-[#1e1e32] rounded px-2 py-1 truncate"
+          className="flex items-center gap-1.5 text-xs text-gray-400 bg-surface border border-surface-border rounded px-2 py-1 truncate"
           title={market}
         >
           <span className="shrink-0 text-gray-600">📍</span>
@@ -349,7 +418,10 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
         <div className="flex items-center gap-2 flex-wrap">
           {(() => {
             const state = runtimeState(enabled, status);
-            const badge = state === 'ACTIVE' ? { cls: accent.badge, title: 'Evaluating normally' } : STATE_BADGE[state];
+            const badge =
+              state === "ACTIVE"
+                ? { cls: accent.badge, title: "Evaluating normally" }
+                : STATE_BADGE[state];
             return (
               <span
                 className={`text-xs px-2 py-0.5 rounded-full font-mono ${badge.cls}`}
@@ -360,7 +432,7 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
             );
           })()}
           {enabled && status && (
-            <span className="text-[11px] font-mono text-gray-600" title={status.last_eval_at}>
+            <span className="text-2xs font-mono text-gray-600" title={status.last_eval_at}>
               eval {fmtAgo(status.last_eval_secs_ago)}
             </span>
           )}
@@ -368,44 +440,52 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
 
         {enabled && (
           <>
-            <div className="text-[11px] font-mono leading-snug">
+            <div className="text-2xs font-mono leading-snug">
               {/* An idle row is not held by a gate; it is waiting for a market,
                   and the age is how long the wait has lasted (the engine stamps
                   it once, when the wait began). A few minutes at the top of the
                   hour is routine; a wait that outlives an hour deserves a look. */}
-              {status?.last_outcome === 'idle' ? (
+              {status?.last_outcome === "idle" ? (
                 <>
                   <span className="text-gray-600">⏳ </span>
                   <span className="text-gray-400">{status.last_reason ?? NO_MARKET_LABEL}</span>
-                  <span className="text-gray-600"> · for {fmtDur(status.last_reason_secs_ago)}</span>
-                </>
-              ) : (<>
-              <span className="text-gray-600">holding: </span>
-              {status?.last_reason ? (
-                <>
-                  <span className="text-gray-400">{status.last_reason}</span>
-                  <span className="text-gray-600"> · {fmtAgo(status.last_reason_secs_ago)}</span>
+                  <span className="text-gray-600">
+                    {" "}
+                    · for {fmtDur(status.last_reason_secs_ago)}
+                  </span>
                 </>
               ) : (
-                <span
-                  className="text-gray-600"
-                  title={
-                    status
-                      ? 'No veto recorded — this viper recently signalled, or reports liveness only.'
-                      : 'Waiting on the engine’s first evaluation.'
-                  }
-                >
-                  {status ? 'no active veto' : '—'}
-                </span>
+                <>
+                  <span className="text-gray-600">holding: </span>
+                  {status?.last_reason ? (
+                    <>
+                      <span className="text-gray-400">{status.last_reason}</span>
+                      <span className="text-gray-600">
+                        {" "}
+                        · {fmtAgo(status.last_reason_secs_ago)}
+                      </span>
+                    </>
+                  ) : (
+                    <span
+                      className="text-gray-600"
+                      title={
+                        status
+                          ? "No veto recorded — this viper recently signalled, or reports liveness only."
+                          : "Waiting on the engine’s first evaluation."
+                      }
+                    >
+                      {status ? "no active veto" : "—"}
+                    </span>
+                  )}
+                </>
               )}
-              </>)}
             </div>
             {/* The viper's standing context, when it keeps one. GBoost: which
                 model is serving and what its training pipeline is doing
                 (backfill progress, training, the last cycle's decision). */}
             {status?.detail && (
               <div
-                className="text-[11px] font-mono leading-snug text-gray-500 whitespace-pre-wrap break-words"
+                className="text-2xs font-mono leading-snug text-gray-500 whitespace-pre-wrap break-words"
                 title={status.detail}
               >
                 <span className="text-gray-600">model: </span>
@@ -417,29 +497,36 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
                 reads, so an operator can check its reasoning against it. */}
             {status && status.refusals && status.refusals.length > 0 && (
               <div
-                className="text-[11px] font-mono leading-snug text-gray-600 truncate"
+                className="text-2xs font-mono leading-snug text-gray-600 truncate"
                 title={status.refusals
-                  .map((t) => `${t.count.toLocaleString()}× ${t.reason}\n    latest: ${t.last_detail}`)
-                  .join('\n')}
+                  .map(
+                    (t) => `${t.count.toLocaleString()}× ${t.reason}\n    latest: ${t.last_detail}`,
+                  )
+                  .join("\n")}
               >
                 <span>refused: </span>
                 {status.refusals.slice(0, 3).map((t, i) => (
                   <span key={t.reason}>
                     {i > 0 && <span> · </span>}
-                    <span className="text-gray-500">{t.count.toLocaleString()}×</span>{' '}
+                    <span className="text-gray-500">{t.count.toLocaleString()}×</span>{" "}
                     <span className="text-gray-400">{t.reason}</span>
                   </span>
                 ))}
               </div>
             )}
-            <div className="text-[11px] font-mono leading-snug" title={status?.last_signal_at ?? undefined}>
+            <div
+              className="text-2xs font-mono leading-snug"
+              title={status?.last_signal_at ?? undefined}
+            >
               <span className="text-gray-600">last signal: </span>
               <span className="text-gray-500">
                 {/* No row at all ≠ "never signalled" — the registry resets on
                     restart, so distinguish unknown (—) from a known absence. */}
-                {!status ? '—' : status.last_signal_secs_ago === null
-                  ? 'none yet'
-                  : fmtAgo(status.last_signal_secs_ago)}
+                {!status
+                  ? "—"
+                  : status.last_signal_secs_ago === null
+                    ? "none yet"
+                    : fmtAgo(status.last_signal_secs_ago)}
               </span>
             </div>
           </>
@@ -448,7 +535,7 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
 
       {/* Params */}
       <div className="flex flex-col">
-        {basicBools.map(f => (
+        {basicBools.map((f) => (
           <BoolRow
             key={f.key}
             field={f}
@@ -458,9 +545,9 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
           />
         ))}
         {schemaLoading && basicFields.length === 0 && basicBools.length === 0 ? (
-          <p className="text-[11px] text-gray-600 py-1">Loading parameters…</p>
+          <p className="text-2xs text-gray-600 py-1">Loading parameters…</p>
         ) : (
-          basicFields.map(f => (
+          basicFields.map((f) => (
             <ParamRow
               key={f.key}
               field={f}
@@ -492,4 +579,3 @@ export default function ViperCard({ viper, config, onPatch, market, status }: Pr
     </div>
   );
 }
-

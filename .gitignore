@@ -50,9 +50,9 @@ logs/
 # Control Tower (Next.js)
 control-tower/.next/
 control-tower/node_modules/
-# control-tower/package-lock.json is tracked for the same reasons as Cargo.lock,
-# and additionally because the Control Tower Dockerfile runs `npm ci`, which
-# refuses to run at all without a lockfile.
+# control-tower/pnpm-lock.yaml and pnpm-workspace.yaml are tracked for the same
+# reasons as Cargo.lock, and additionally because the Control Tower Dockerfile
+# runs `pnpm install --frozen-lockfile`, which refuses to run without them.
 control-tower/.env.local
 control-tower/.env*.local
 
@@ -116,6 +116,7 @@ tools/__pycache__/
 
 # MCP integration (integrations/mcp) — installed locally by the operator
 integrations/mcp/node_modules/
+integrations/mcp/pnpm-lock.yaml
 integrations/mcp/package-lock.json
 tools/sonar_addresses.json
 tools/sonar_backtest.py

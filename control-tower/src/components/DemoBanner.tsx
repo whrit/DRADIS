@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { DEMO_MODE, REPO_URL, HOME_URL } from '@/lib/demo';
+import { DEMO_MODE, HOME_URL } from "@/lib/demo";
 
 /**
  * Persistent read-only demo banner.
@@ -35,13 +35,15 @@ export default function DemoBanner() {
     <div
       role="note"
       aria-label="Read-only demo notice"
-      className="fixed inset-x-0 bottom-0 z-[100] border-t border-cyan-500/30 bg-[#0b0b14]/95 backdrop-blur supports-[backdrop-filter]:bg-[#0b0b14]/80"
+      className="fixed inset-x-0 bottom-0 z-100 border-t border-cyan-500/30 bg-surface-banner/95 backdrop-blur supports-[backdrop-filter]:bg-surface-banner/80"
     >
       <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 px-4 py-2 text-center text-xs font-mono text-gray-300 sm:text-sm">
-        <span className="hidden sm:inline" aria-hidden>🔭</span>
+        <span className="hidden sm:inline" aria-hidden>
+          🔭
+        </span>
         <span>
-          This is a <span className="font-semibold text-cyan-300">live, read-only demo</span> of DRADIS — raptor telemetry
-          streams in real time, but no controls are active.
+          This is a <span className="font-semibold text-cyan-300">live, read-only demo</span> of
+          DRADIS — raptor telemetry streams in real time, but no controls are active.
         </span>
         <a
           href={HOME_URL}

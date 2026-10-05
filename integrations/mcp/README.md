@@ -32,7 +32,7 @@ write-capable tools need a scoped token that does not exist yet.
 
 ```bash
 cd integrations/mcp
-npm install
+pnpm install
 ```
 
 ## Configure your client

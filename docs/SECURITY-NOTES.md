@@ -13,7 +13,8 @@ Dependabot needs a lockfile to resolve transitive versions. `Cargo.lock` and
 `control-tower/package-lock.json` were untracked until 2026-08-19, when they were
 committed so the Marketplace AMI could build reproducibly from `git archive`.
 The exposure was always present; committing the lockfiles made it visible. That
-is the tracked state working as intended.
+is the tracked state working as intended. The Control Tower has since moved to
+pnpm; its tracked lockfile is now `control-tower/pnpm-lock.yaml`.
 
 ## Fixed
 
@@ -30,18 +31,21 @@ is the tracked state working as intended.
 Every one was a patch or minor bump inside the same major. No API changes were
 required and no code was modified.
 
-`sharp` needed an `overrides` entry in `control-tower/package.json`: Next pins it
-to `^0.34.3`, so `npm update` cannot reach the fixed 0.35 line. The override is
-safe here because the package is never actually invoked — see below.
+`sharp` needed an override: Next pinned it to `^0.34.3`, so a plain update could
+not reach the fixed 0.35 line. Next now accepts `^0.34.3 || ^0.35.4`, and the
+override stays as a floor so a resolution can never fall back to 0.34. It lives
+in `control-tower/pnpm-workspace.yaml` (pnpm ignores npm's `overrides` field in
+`package.json`). The override is safe because the package is never actually
+invoked — see below.
 
 ## Accepted, with reasons
 
 ### postcss 8.4.31, vendored inside Next
 
-`node_modules/next/node_modules/postcss` remains at 8.4.31. Next depends on that
-**exact** version and vendors its own copy, and npm honours the pin over an
-`overrides` entry — verified, not assumed. Forcing it would mean fighting the
-framework's own resolution on every install.
+Next's own `postcss` dependency remains at 8.4.31. Next depends on that **exact**
+version, and the lockfile resolves it separately from the direct 8.5.x
+(`pnpm why postcss`). It is deliberately not overridden: forcing it would mean
+fighting the framework's own resolution on every install.
 
 Four advisories apply to it:
 
@@ -74,9 +78,9 @@ gh api "repos/mbordash/DRADIS/dependabot/alerts?state=open&per_page=100" \
 ```
 
 ```
-cd control-tower && npm audit
+cd control-tower && pnpm audit
 ```
 
-Rust advisories are not covered by `npm audit`; `cargo update -p <crate>` handles
+Rust advisories are not covered by `pnpm audit`; `cargo update -p <crate>` handles
 them individually, which is preferable to a blanket `cargo update` on a
 trading system where a surprise transitive bump is its own risk.

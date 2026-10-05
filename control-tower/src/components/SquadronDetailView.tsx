@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,10 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { useCallback, useState } from 'react';
-import useSWR from 'swr';
-import type { SquadronSummary, DynamicConfig, AssetRaptorHealth } from '@/lib/types';
-import { marketLabel } from '@/lib/types';
+import { useCallback, useState } from "react";
+import useSWR from "swr";
+import type { SquadronSummary, DynamicConfig, AssetRaptorHealth } from "@/lib/types";
+import { marketLabel } from "@/lib/types";
 import {
   getTrades,
   getTradeStats,
@@ -31,13 +31,13 @@ import {
   getConfigSchema,
   standDownSquadron,
   VIPER_DEFS,
-} from '@/lib/api';
-import ViperCard, { fmtAgo, isTroubled } from '@/components/ViperCard';
-import { AdvancedRow } from '@/components/AdvancedConfigModal';
-import OpenPositionsCard from '@/components/OpenPositionsCard';
-import HelmIntentsPanel from '@/components/HelmIntentsPanel';
-import { useConfirm } from '@/components/ConfirmDialog';
-import { DEMO_MODE } from '@/lib/demo';
+} from "@/lib/api";
+import ViperCard, { fmtAgo, isTroubled } from "@/components/ViperCard";
+import { AdvancedRow } from "@/components/AdvancedConfigModal";
+import OpenPositionsCard from "@/components/OpenPositionsCard";
+import HelmIntentsPanel from "@/components/HelmIntentsPanel";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { DEMO_MODE } from "@/lib/demo";
 
 // ── Raptor health panel ───────────────────────────────────────────────────────
 
@@ -48,35 +48,79 @@ const RAPTOR_META: Record<
   string,
   {
     label: string;
-    flag?: 'price_connected' | 'funding_connected' | 'deriv_connected' | 'tide_connected' | 'sports_connected' | 'horizon_connected';
-    dot: string; text: string; source: string;
+    flag?:
+      | "price_connected"
+      | "funding_connected"
+      | "deriv_connected"
+      | "tide_connected"
+      | "sports_connected"
+      | "horizon_connected";
+    dot: string;
+    text: string;
+    source: string;
     /** Health-map key to read this raptor's flag from, when it differs from the
      *  squadron's asset (e.g. the venue-neutral Sports Raptor publishes under "sports"). */
     healthKey?: string;
     /** When the feed is expected to be intermittently offline (e.g. off-hours),
      *  render the disconnected state as a neutral idle badge rather than a red error. */
-    offlineText?: string; offlineDot?: string; offlineClass?: string;
+    offlineText?: string;
+    offlineDot?: string;
+    offlineClass?: string;
   }
 > = {
-  price:   { label: 'Price Raptor',   flag: 'price_connected',   dot: 'bg-cyan-400', text: 'text-cyan-300', source: 'Binance Spot WS' },
-  funding: { label: 'Funding Raptor', flag: 'funding_connected', dot: 'bg-teal-400', text: 'text-teal-300', source: 'Binance Funding API' },
-  derivatives: { label: 'Derivatives Raptor', flag: 'deriv_connected', dot: 'bg-amber-400', text: 'text-amber-300', source: 'Binance FAPI (OI + CVD)' },
-  tide:    {
-    label: 'Tide Raptor', flag: 'tide_connected', dot: 'bg-sky-400', text: 'text-sky-300',
-    source: 'Alpaca IEX (ETF iNAV)',
-    offlineText: 'Idle (off-hours)', offlineDot: 'bg-gray-600', offlineClass: 'text-gray-500',
+  price: {
+    label: "Price Raptor",
+    flag: "price_connected",
+    dot: "bg-cyan-400",
+    text: "text-cyan-300",
+    source: "Binance Spot WS",
+  },
+  funding: {
+    label: "Funding Raptor",
+    flag: "funding_connected",
+    dot: "bg-teal-400",
+    text: "text-teal-300",
+    source: "Binance Funding API",
+  },
+  derivatives: {
+    label: "Derivatives Raptor",
+    flag: "deriv_connected",
+    dot: "bg-amber-400",
+    text: "text-amber-300",
+    source: "Binance FAPI (OI + CVD)",
+  },
+  tide: {
+    label: "Tide Raptor",
+    flag: "tide_connected",
+    dot: "bg-sky-400",
+    text: "text-sky-300",
+    source: "Alpaca IEX (ETF iNAV)",
+    offlineText: "Idle (off-hours)",
+    offlineDot: "bg-gray-600",
+    offlineClass: "text-gray-500",
   },
   horizon: {
-    label: 'Horizon Raptor', flag: 'horizon_connected', dot: 'bg-orange-400', text: 'text-orange-300',
-    source: 'Alpaca IEX (SPY/QQQ/UVXY)',
+    label: "Horizon Raptor",
+    flag: "horizon_connected",
+    dot: "bg-orange-400",
+    text: "text-orange-300",
+    source: "Alpaca IEX (SPY/QQQ/UVXY)",
     // Macro raptor — publishes health under the "btc" key regardless of squadron asset.
-    healthKey: 'btc',
-    offlineText: 'Idle (off-hours)', offlineDot: 'bg-gray-600', offlineClass: 'text-gray-500',
+    healthKey: "btc",
+    offlineText: "Idle (off-hours)",
+    offlineDot: "bg-gray-600",
+    offlineClass: "text-gray-500",
   },
-  sports:  {
-    label: 'Sports Raptor', flag: 'sports_connected', dot: 'bg-fuchsia-400', text: 'text-fuchsia-300',
-    source: 'The Odds API (book consensus board)', healthKey: 'sports',
-    offlineText: 'Idle', offlineDot: 'bg-gray-600', offlineClass: 'text-gray-500',
+  sports: {
+    label: "Sports Raptor",
+    flag: "sports_connected",
+    dot: "bg-fuchsia-400",
+    text: "text-fuchsia-300",
+    source: "The Odds API (book consensus board)",
+    healthKey: "sports",
+    offlineText: "Idle",
+    offlineDot: "bg-gray-600",
+    offlineClass: "text-gray-500",
   },
 };
 
@@ -98,8 +142,8 @@ function RaptorHealthPanel({
       <p className="label-muted mb-3">Raptor Telemetry</p>
       {raptorKinds.length === 0 ? (
         <div className="text-xs font-mono text-gray-600">
-          No raptors linked to the{' '}
-          <span className="text-gray-300">{marketClass || 'unknown'}</span> market class yet.
+          No raptors linked to the <span className="text-gray-300">{marketClass || "unknown"}</span>{" "}
+          market class yet.
         </div>
       ) : (
         <div className="space-y-2">
@@ -117,27 +161,35 @@ function RaptorHealthPanel({
             // A feed with an `offlineText` (e.g. Tide off-hours) shows a neutral
             // idle badge when down rather than a red "Reconnecting" error.
             const idleStyle = !connected && meta?.offlineText;
-            const dot = !hasFlag || unread
-              ? 'bg-gray-600'
-              : connected
-                ? `${meta!.dot} animate-pulse`
-                : idleStyle ? (meta!.offlineDot ?? 'bg-gray-600') : 'bg-red-500';
+            const dot =
+              !hasFlag || unread
+                ? "bg-gray-600"
+                : connected
+                  ? `${meta!.dot} animate-pulse`
+                  : idleStyle
+                    ? (meta!.offlineDot ?? "bg-gray-600")
+                    : "bg-red-500";
             const statusText = !hasFlag
-              ? 'Pending'
+              ? "Pending"
               : unread
-                ? 'Checking…'
-              : connected
-                ? 'Connected'
-                : idleStyle ? meta!.offlineText! : 'Reconnecting';
-            const statusClass = !hasFlag || unread
-              ? 'text-gray-500'
-              : connected
-                ? meta!.text
-                : idleStyle ? (meta!.offlineClass ?? 'text-gray-500') : 'text-red-400';
+                ? "Checking…"
+                : connected
+                  ? "Connected"
+                  : idleStyle
+                    ? meta!.offlineText!
+                    : "Reconnecting";
+            const statusClass =
+              !hasFlag || unread
+                ? "text-gray-500"
+                : connected
+                  ? meta!.text
+                  : idleStyle
+                    ? (meta!.offlineClass ?? "text-gray-500")
+                    : "text-red-400";
             return (
               <div
                 key={kind}
-                className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1e1e32] bg-[#0d0d1a]"
+                className="flex items-center justify-between px-3 py-2 rounded-lg border border-surface-border bg-surface-sunken"
               >
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${dot}`} />
@@ -150,8 +202,8 @@ function RaptorHealthPanel({
           {(() => {
             const sources = raptorKinds.map((k) => RAPTOR_META[k]?.source).filter(Boolean);
             return sources.length > 0 ? (
-              <div className="text-[10px] font-mono text-gray-600 pt-1">
-                Source: {sources.join(' + ')}
+              <div className="text-3xs font-mono text-gray-600 pt-1">
+                Source: {sources.join(" + ")}
               </div>
             ) : null;
           })()}
@@ -164,15 +216,15 @@ function RaptorHealthPanel({
 // ── Squadron info card ────────────────────────────────────────────────────────
 
 const STATE_COLORS: Record<string, string> = {
-  PATROLLING: 'text-green-400',
-  DEPLOYED: 'text-blue-400',
-  RTB: 'text-amber-400',
-  STOOD_DOWN: 'text-red-400',
-  STAGED: 'text-gray-500',
+  PATROLLING: "text-green-400",
+  DEPLOYED: "text-blue-400",
+  RTB: "text-amber-400",
+  STOOD_DOWN: "text-red-400",
+  STAGED: "text-gray-500",
 };
 
 function SquadronInfoCard({ squadron }: { squadron: SquadronSummary }) {
-  const stateColor = STATE_COLORS[squadron.state] ?? 'text-gray-400';
+  const stateColor = STATE_COLORS[squadron.state] ?? "text-gray-400";
   return (
     <div className="card p-4">
       <p className="label-muted mb-3">Squadron Info</p>
@@ -199,22 +251,28 @@ function SquadronInfoCard({ squadron }: { squadron: SquadronSummary }) {
           <span className="text-gray-500">Deployed</span>
           <span className="text-gray-400">{new Date(squadron.deployed_at).toLocaleString()}</span>
         </div>
-        <div className="flex flex-col gap-1 pt-2 border-t border-[#1e1e32]">
+        <div className="flex flex-col gap-1 pt-2 border-t border-surface-border">
           <span className="text-gray-500">
-            {squadron.asset.toLowerCase().startsWith('us') ? 'Active Market' : 'Primary Market (Hourly)'}
+            {squadron.asset.toLowerCase().startsWith("us")
+              ? "Active Market"
+              : "Primary Market (Hourly)"}
           </span>
-          <span className={`text-[11px] break-words ${squadron.market_name ? 'text-gray-300' : 'text-gray-500 italic'}`}>
-            {squadron.market_name ? squadron.market_name : `⏳ ${marketLabel(squadron.market_name)}`}
+          <span
+            className={`text-2xs break-words ${squadron.market_name ? "text-gray-300" : "text-gray-500 italic"}`}
+          >
+            {squadron.market_name
+              ? squadron.market_name
+              : `⏳ ${marketLabel(squadron.market_name)}`}
           </span>
         </div>
         {squadron.maker_market_name && (
-          <div className="flex flex-col gap-1 pt-2 border-t border-[#1e1e32]">
+          <div className="flex flex-col gap-1 pt-2 border-t border-surface-border">
             <span className="text-gray-500">Maker Market (Window/Daily)</span>
-            <span className="text-gray-300 text-[11px] break-words">{squadron.maker_market_name}</span>
+            <span className="text-gray-300 text-2xs break-words">{squadron.maker_market_name}</span>
           </div>
         )}
-        <div className="pt-2 border-t border-[#1e1e32]">
-          <span className="text-gray-700 text-[10px]">ID: {squadron.id}</span>
+        <div className="pt-2 border-t border-surface-border">
+          <span className="text-gray-700 text-3xs">ID: {squadron.id}</span>
         </div>
       </div>
     </div>
@@ -242,7 +300,7 @@ interface Props {
 // 'Sports Lines' holds the line-quality gates that BOTH FairValue and Maker read
 // on sports markets. They sit here rather than on either card because duplicating
 // one key onto two cards would imply two independent settings.
-const SQUADRON_GROUPS = ['Order Book', 'Exit Accounting', 'Sports Lines'];
+const SQUADRON_GROUPS = ["Order Book", "Exit Accounting", "Sports Lines"];
 
 function SquadronSettingsCard({
   config,
@@ -251,27 +309,26 @@ function SquadronSettingsCard({
   config: DynamicConfig;
   onPatch: (patch: Partial<DynamicConfig>) => Promise<void>;
 }) {
-  const { data: schema } = useSWR('configSchema', getConfigSchema);
-  const fields = (schema ?? []).filter(f => SQUADRON_GROUPS.includes(f.group));
+  const { data: schema } = useSWR("configSchema", getConfigSchema);
+  const fields = (schema ?? []).filter((f) => SQUADRON_GROUPS.includes(f.group));
   if (fields.length === 0) return null;
 
   return (
     <div className="card p-4 space-y-3">
       <div>
         <h3 className="text-sm font-mono text-gray-200">Squadron settings</h3>
-        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-          Apply to every viper in this squadron. Changing them here affects only this
-          squadron, so a setting can be tried on one market class and compared against
-          the others.
+        <p className="text-2xs text-gray-500 mt-1 leading-relaxed">
+          Apply to every viper in this squadron. Changing them here affects only this squadron, so a
+          setting can be tried on one market class and compared against the others.
         </p>
       </div>
-      {SQUADRON_GROUPS.map(group => {
-        const inGroup = fields.filter(f => f.group === group);
+      {SQUADRON_GROUPS.map((group) => {
+        const inGroup = fields.filter((f) => f.group === group);
         if (inGroup.length === 0) return null;
         return (
           <div key={group} className="space-y-2">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-gray-600">{group}</p>
-            {inGroup.map(f => (
+            <p className="text-3xs font-mono uppercase tracking-wide text-gray-600">{group}</p>
+            {inGroup.map((f) => (
               <AdvancedRow
                 key={f.key}
                 field={f}
@@ -297,7 +354,7 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
   // Market taxonomy resolved by the backend (data-driven; falls back to the
   // full set if an older backend didn't supply it).
   const raptorKinds = squadron.raptors ?? [];
-  const marketClass = squadron.market_class ?? 'unknown';
+  const marketClass = squadron.market_class ?? "unknown";
   const activeVipers =
     squadron.vipers && squadron.vipers.length > 0
       ? VIPER_DEFS.filter((v) => squadron.vipers!.includes(v.statusKey))
@@ -311,26 +368,26 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
   const [standDownError, setStandDownError] = useState<string | null>(null);
 
   const handleStandDown = useCallback(async () => {
-    const autoDeployed = marketClass === 'politics' || marketClass === 'sports';
+    const autoDeployed = marketClass === "politics" || marketClass === "sports";
     const ok = await confirm({
       title: `Stand down ${squadron.name}?`,
       body: (
         <div className="space-y-2">
           <p>
-            This squadron stops trading {squadron.market_name || 'its market'}. Resting
-            orders are cancelled and any open position is flattened or left to settle.
+            This squadron stops trading {squadron.market_name || "its market"}. Resting orders are
+            cancelled and any open position is flattened or left to settle.
           </p>
           {autoDeployed && (
             <p className="text-amber-300">
-              Auto-deploy for {marketClass} will be switched off, so DRADIS does not
-              immediately start a replacement. Turn it back on in Setup → Deployment.
+              Auto-deploy for {marketClass} will be switched off, so DRADIS does not immediately
+              start a replacement. Turn it back on in Setup → Deployment.
             </p>
           )}
           <p className="text-gray-400">The engine and other squadrons keep running.</p>
         </div>
       ),
-      confirmLabel: 'Stand down',
-      tone: 'danger',
+      confirmLabel: "Stand down",
+      tone: "danger",
     });
     if (!ok) return;
 
@@ -340,7 +397,7 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
       await standDownSquadron(squadron.id);
       onBack();
     } catch (err) {
-      setStandDownError(err instanceof Error ? err.message : 'Stand-down failed');
+      setStandDownError(err instanceof Error ? err.message : "Stand-down failed");
     } finally {
       setStandingDown(false);
     }
@@ -349,16 +406,15 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
   // ── Data fetching ──────────────────────────────────────────────────────────
   // Load squadron-specific config instead of global config
   const { data: config, mutate: refreshConfig } = useSWR(
-    ['squadron-config', squadron.id],
+    ["squadron-config", squadron.id],
     () => getSquadronConfig(squadron.id),
-    { refreshInterval: 0, revalidateOnFocus: false }
+    { refreshInterval: 0, revalidateOnFocus: false },
   );
 
-
   const { data: trades, isLoading: tradesLoading } = useSWR(
-    ['trades', asset],
+    ["trades", asset],
     () => getTrades(60, asset),
-    { refreshInterval: 15_000 }
+    { refreshInterval: 15_000 },
   );
 
   // Summary cards read lifetime aggregates, NOT a reduce over `trades` above:
@@ -366,25 +422,24 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
   // 500), so every "total" it fed was silently truncated once the shard passed
   // 60 trades. `trades` still backs the list/table, which wants a recent window.
   const { data: tradeStats, isLoading: statsLoading } = useSWR(
-    ['trade-stats', asset],
+    ["trade-stats", asset],
     () => getTradeStats(asset),
-    { refreshInterval: 15_000 }
+    { refreshInterval: 15_000 },
   );
 
   const { data: openPositions, isLoading: positionsLoading } = useSWR(
-    ['positions', asset],
+    ["positions", asset],
     () => getOpenPositions(asset),
-    { refreshInterval: 15_000 }
+    { refreshInterval: 15_000 },
   );
 
-  const { data: status } = useSWR('status', getStatus, { refreshInterval: 30_000 });
+  const { data: status } = useSWR("status", getStatus, { refreshInterval: 30_000 });
 
   // Per-viper liveness + veto reasons, rendered on each ViperCard.
-  const { data: viperStatus } = useSWR(
-    ['vipers-status', asset],
-    () => getVipersStatus(asset),
-    { refreshInterval: 10_000, revalidateOnFocus: false }
-  );
+  const { data: viperStatus } = useSWR(["vipers-status", asset], () => getVipersStatus(asset), {
+    refreshInterval: 10_000,
+    revalidateOnFocus: false,
+  });
 
   // Registry rows keyed by `Strategy::name()` — the same key VIPER_DEFS carries.
   const statusByStrategy = new Map((viperStatus ?? []).map((r) => [r.strategy, r]));
@@ -397,7 +452,6 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
   const rendered = new Set(activeVipers.map((v) => v.strategyName));
   const unmapped = (viperStatus ?? []).filter((r) => !rendered.has(r.strategy));
 
-
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handlePatch = useCallback(
     async (patch: Partial<DynamicConfig>) => {
@@ -405,7 +459,7 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
       await patchSquadronConfig(squadron.id, patch);
       await refreshConfig();
     },
-    [squadron.id, refreshConfig]
+    [squadron.id, refreshConfig],
   );
 
   return (
@@ -420,7 +474,7 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
       </button>
 
       {/* ── Header banner ─────────────────────────────────────────────────── */}
-      <div className="card px-5 py-4 border border-indigo-500/20 bg-[#0d0d1a]">
+      <div className="card px-5 py-4 border border-indigo-500/20 bg-surface-sunken">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-2xl">✈️</span>
@@ -431,22 +485,20 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
               </p>
             </div>
           </div>
-          {squadron.state !== 'STOOD_DOWN' && (
+          {squadron.state !== "STOOD_DOWN" && (
             <button
               onClick={handleStandDown}
               disabled={standingDown}
-              className="shrink-0 text-[11px] font-mono border rounded px-3 py-1.5 transition-colors
+              className="shrink-0 text-2xs font-mono border rounded px-3 py-1.5 transition-colors
                          border-red-500/30 text-red-300 bg-red-500/10 hover:bg-red-500/20
                          disabled:opacity-50 disabled:cursor-not-allowed"
               title="Stop this squadron"
             >
-              {standingDown ? 'Standing down…' : '🛬 Stand Down'}
+              {standingDown ? "Standing down…" : "🛬 Stand Down"}
             </button>
           )}
         </div>
-        {standDownError && (
-          <p className="text-[11px] font-mono text-red-400 mt-2">{standDownError}</p>
-        )}
+        {standDownError && <p className="text-2xs font-mono text-red-400 mt-2">{standDownError}</p>}
       </div>
       {confirmDialog}
 
@@ -462,52 +514,67 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
       </div>
 
       {/* ── Helm: the operator's intents on this squadron ─────────────────── */}
-      {marketClass === 'helm' && <HelmIntentsPanel squadronId={squadron.id} />}
+      {marketClass === "helm" && <HelmIntentsPanel squadronId={squadron.id} />}
 
       {/* ── Performance stats for this squadron/asset ─────────────────────── */}
       {(() => {
-        const total   = tradeStats?.count ?? 0;
-        const wins    = tradeStats?.wins ?? 0;
+        const total = tradeStats?.count ?? 0;
+        const wins = tradeStats?.wins ?? 0;
         // Win rate is measured over decided trades only. Exactly-flat trades are
         // neither wins nor losses, and counting them as losses (which dividing by
         // `count` would do) understates the rate.
         const decided = wins + (tradeStats?.losses ?? 0);
         const winRate = decided > 0 ? (wins / decided) * 100 : null;
-        const avgPnl  = total > 0 ? (tradeStats?.realized_pnl ?? 0) / total : null;
-        const since   = tradeStats?.first_ts
-          ? new Date(tradeStats.first_ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        const avgPnl = total > 0 ? (tradeStats?.realized_pnl ?? 0) / total : null;
+        const since = tradeStats?.first_ts
+          ? new Date(tradeStats.first_ts).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })
           : null;
         return (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="card px-4 py-3 flex flex-col gap-1">
-          <span className="label-muted">Completed Trades</span>
-          <span className="stat-value">{statsLoading || !tradeStats ? '—' : String(total)}</span>
-          <span className="text-xs text-gray-500">{since ? `all time, since ${since}` : 'all time'}</span>
-        </div>
-        <div className="card px-4 py-3 flex flex-col gap-1">
-          <span className="label-muted">Open Positions</span>
-          <span className="stat-value">{positionsLoading || !openPositions ? '—' : String(openPositions.length)}</span>
-          <span className="text-xs text-gray-500">active now</span>
-        </div>
-        <div className="card px-4 py-3 flex flex-col gap-1">
-          <span className="label-muted">Win Rate</span>
-          <span className={`stat-value ${winRate === null ? 'text-gray-600' : winRate >= 50 ? 'text-emerald-300' : 'text-amber-300'}`}>
-            {statsLoading || winRate === null ? '—' : `${winRate.toFixed(0)}%`}
-          </span>
-          <span className="text-xs text-gray-500">
-            {winRate === null ? 'no closed trades' : `${wins}/${decided} profitable`}
-          </span>
-        </div>
-        <div className="card px-4 py-3 flex flex-col gap-1">
-          <span className="label-muted">Avg Trade P&L</span>
-          <span className={`stat-value ${avgPnl === null ? 'text-gray-600' : avgPnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-            {statsLoading || avgPnl === null ? '—' : `${avgPnl >= 0 ? '+' : '−'}$${Math.abs(avgPnl).toFixed(2)}`}
-          </span>
-          <span className="text-xs text-gray-500">
-            {avgPnl === null ? 'no closed trades' : 'per closed trade, net of fees'}
-          </span>
-        </div>
-      </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="card px-4 py-3 flex flex-col gap-1">
+              <span className="label-muted">Completed Trades</span>
+              <span className="stat-value">
+                {statsLoading || !tradeStats ? "—" : String(total)}
+              </span>
+              <span className="text-xs text-gray-500">
+                {since ? `all time, since ${since}` : "all time"}
+              </span>
+            </div>
+            <div className="card px-4 py-3 flex flex-col gap-1">
+              <span className="label-muted">Open Positions</span>
+              <span className="stat-value">
+                {positionsLoading || !openPositions ? "—" : String(openPositions.length)}
+              </span>
+              <span className="text-xs text-gray-500">active now</span>
+            </div>
+            <div className="card px-4 py-3 flex flex-col gap-1">
+              <span className="label-muted">Win Rate</span>
+              <span
+                className={`stat-value ${winRate === null ? "text-gray-600" : winRate >= 50 ? "text-emerald-300" : "text-amber-300"}`}
+              >
+                {statsLoading || winRate === null ? "—" : `${winRate.toFixed(0)}%`}
+              </span>
+              <span className="text-xs text-gray-500">
+                {winRate === null ? "no closed trades" : `${wins}/${decided} profitable`}
+              </span>
+            </div>
+            <div className="card px-4 py-3 flex flex-col gap-1">
+              <span className="label-muted">Avg Trade P&L</span>
+              <span
+                className={`stat-value ${avgPnl === null ? "text-gray-600" : avgPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+              >
+                {statsLoading || avgPnl === null
+                  ? "—"
+                  : `${avgPnl >= 0 ? "+" : "−"}$${Math.abs(avgPnl).toFixed(2)}`}
+              </span>
+              <span className="text-xs text-gray-500">
+                {avgPnl === null ? "no closed trades" : "per closed trade, net of fees"}
+              </span>
+            </div>
+          </div>
         );
       })()}
 
@@ -516,8 +583,8 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
         <div className="flex items-center justify-between mb-3">
           <p className="label-muted">Viper Layer (Active Strategies)</p>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded px-2 py-0.5">
-               Squadron-Scoped Config
+            <span className="text-3xs font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded px-2 py-0.5">
+              Squadron-Scoped Config
             </span>
             <span className="text-xs text-gray-600 font-mono">
               {asset.toUpperCase()} execution configs
@@ -527,8 +594,8 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
 
         {/* Info banner explaining squadron configs */}
         <div className="mb-3 px-4 py-2 bg-indigo-500/5 border border-indigo-500/20 rounded-lg text-xs font-mono text-indigo-300">
-          <span className="font-semibold">Squadron Config:</span> Changes here only affect this squadron.
-          Vipers shown are those linked to the{' '}
+          <span className="font-semibold">Squadron Config:</span> Changes here only affect this
+          squadron. Vipers shown are those linked to the{" "}
           <span className="capitalize text-indigo-200">{marketClass}</span> market class.
         </div>
 
@@ -571,15 +638,15 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
         )}
 
         {unmapped.length > 0 && (
-          <div className="mt-3 px-4 py-2 rounded-lg border border-amber-500/20 bg-amber-500/5 text-[11px] font-mono text-amber-300/80">
-            <span className="font-semibold">Reporting without a card:</span>{' '}
+          <div className="mt-3 px-4 py-2 rounded-lg border border-amber-500/20 bg-amber-500/5 text-2xs font-mono text-amber-300/80">
+            <span className="font-semibold">Reporting without a card:</span>{" "}
             {unmapped.map((r, i) => {
               const bad = isTroubled(r);
               return (
                 <span key={r.strategy}>
-                  {i > 0 && ' · '}
-                  <span className={bad ? 'text-red-400' : ''}>
-                    {r.strategy.replace(/Strategy$/, '')}
+                  {i > 0 && " · "}
+                  <span className={bad ? "text-red-400" : ""}>
+                    {r.strategy.replace(/Strategy$/, "")}
                   </span>
                   <span className="text-gray-500"> (eval {fmtAgo(r.last_eval_secs_ago)})</span>
                 </span>
@@ -602,4 +669,3 @@ export default function SquadronDetailView({ squadron, onBack }: Props) {
     </div>
   );
 }
-
