@@ -83,6 +83,7 @@ pub fn spawn_pulse_task(
 ) {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(300));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         ticker.tick().await; // skip immediate first tick
         loop {
             tokio::select! {
@@ -123,6 +124,7 @@ pub fn spawn_settlement_task<P>(
 {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(config::MERGE_SCAN_INTERVAL_SECS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         ticker.tick().await;
         loop {
             tokio::select! {
@@ -535,6 +537,7 @@ pub fn spawn_status_task(
 ) {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(60));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         ticker.tick().await;
         loop {
             tokio::select! {
@@ -747,6 +750,7 @@ pub fn spawn_cleanup_task(
 ) {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(300));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         ticker.tick().await;
         loop {
             tokio::select! {
@@ -1112,6 +1116,7 @@ pub fn spawn_watchdog_task(
 ) {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(120));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         ticker.tick().await; // consume immediate first tick
         loop {
             tokio::select! {
@@ -1156,6 +1161,7 @@ pub fn spawn_lifecycle_task(
     const LIFECYCLE_SYNC_SECS: u64 = 30;
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(LIFECYCLE_SYNC_SECS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         ticker.tick().await; // skip first tick — let the market settle
         loop {
             tokio::select! {

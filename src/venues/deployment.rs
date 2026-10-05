@@ -177,6 +177,7 @@ pub async fn run_deployment_processor<R: DeploymentRunner>(
 ) {
     let label = runner.venue_label();
     let mut ticker = tokio::time::interval(Duration::from_secs(DEPLOY_POLL_SECS));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     info!("📋 {label} deployment processor started — operator-deployed squadrons enabled");
 
     // Nothing can be mid-flight at startup, so any row still marked active or

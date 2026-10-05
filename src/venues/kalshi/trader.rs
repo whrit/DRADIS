@@ -1181,6 +1181,13 @@ async fn trade_one_market(
     let mut dash_tick = tokio::time::interval(Duration::from_secs(DASHBOARD_SYNC_SECS));
     let mut lifecycle_tick = tokio::time::interval(Duration::from_secs(LIFECYCLE_SYNC_SECS));
     let mut rescan_tick = tokio::time::interval(Duration::from_secs(MARKET_RESCAN_SECS));
+    // Decision and reconcile ticks evaluate current state: Skip drops the backlog
+    // after a stall. Remote housekeeping uses Delay so a slow call is not followed
+    // by back-to-back repeats.
+    price_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    lifecycle_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    dash_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    rescan_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let _ = rescan_tick.tick().await; // skip the immediate first fire
     let mut cooldown_until = Instant::now();
     let mut winding_down = false;

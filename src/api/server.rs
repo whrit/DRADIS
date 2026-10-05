@@ -367,6 +367,8 @@ async fn run_telemetry_sampler(
     history: TelemetryHistory,
 ) {
     let mut ticker = tokio::time::interval(std::time::Duration::from_secs(TELEMETRY_SAMPLE_SECS));
+    // A missed sample cannot be reconstructed; keep the cadence instead of bursting.
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         ticker.tick().await;
         let now = chrono::Utc::now().timestamp_millis();
