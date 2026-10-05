@@ -1410,11 +1410,13 @@ mod tests {
     /// Skipped when the sources are absent, so an engine-only build still passes.
     #[test]
     fn every_group_renders_somewhere() {
-        let read = |p: &str| std::fs::read_to_string(p).ok();
+        // Normalized to single quotes: the front end's formatter decides the quote
+        // style, and these checks are about the names, not the punctuation.
+        let read = |p: &str| std::fs::read_to_string(p).ok().map(|s| s.replace('"', "'"));
         let (Some(setup_tsx), Some(squadron_tsx), Some(setup_rs)) = (
             read("control-tower/src/components/SetupPage.tsx"),
             read("control-tower/src/components/SquadronDetailView.tsx"),
-            read("src/api/setup.rs"),
+            std::fs::read_to_string("src/api/setup.rs").ok(),
         ) else {
             eprintln!("front-end sources not present — skipping render check");
             return;
@@ -1495,7 +1497,7 @@ mod tests {
     /// bools, and this fails if that filter comes back.
     #[test]
     fn a_non_advanced_bool_is_editable_on_its_card() {
-        let Ok(card) = std::fs::read_to_string("control-tower/src/components/ViperCard.tsx") else {
+        let Ok(card) = std::fs::read_to_string("control-tower/src/components/ViperCard.tsx").map(|s| s.replace('"', "'")) else {
             eprintln!("control-tower source not present — skipping");
             return;
         };
@@ -1520,7 +1522,7 @@ mod tests {
 
     #[test]
     fn every_viper_group_names_a_control_tower_card() {
-        let Ok(defs) = std::fs::read_to_string("control-tower/src/lib/api.ts") else {
+        let Ok(defs) = std::fs::read_to_string("control-tower/src/lib/api.ts").map(|s| s.replace('"', "'")) else {
             eprintln!("control-tower source not present — skipping card-name check");
             return;
         };
