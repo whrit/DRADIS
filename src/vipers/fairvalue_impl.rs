@@ -104,8 +104,8 @@ use rust_decimal_macros::dec;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex as StdMutex, OnceLock};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::orchestrator::{Strategy, StrategyContext};
 use crate::state::{StrategySignal, StrategyStatus, OrderParams, MarketConfig, MarketSnapshot, PositionKey};
@@ -232,6 +232,9 @@ struct FairValueGlobals {
     /// rule used), and the open rows the sweep follows. See
     /// [`stop_counterfactual`].
     stop_shadow: StdMutex<stop_counterfactual::State>,
+    /// Set once the one-per-process vol seed fetch has been started for this
+    /// asset, whether it then succeeds or not. See [`maybe_start_vol_seed`].
+    vol_seed_claimed: AtomicBool,
 }
 
 /// Record this tick's OBI verdict for one (market, side): a clear book keeps
@@ -313,6 +316,7 @@ impl FairValueGlobals {
             sports_opened: StdMutex::new(std::collections::HashSet::new()),
             obi_clear_since:  StdMutex::new(HashMap::new()),
             stop_shadow:      StdMutex::new(stop_counterfactual::State::default()),
+            vol_seed_claimed: AtomicBool::new(false),
         }
     }
 }
@@ -330,6 +334,101 @@ fn globals(asset: &str) -> &'static FairValueGlobals {
     *guard
         .entry(asset.to_ascii_uppercase())
         .or_insert_with(|| Box::leak(Box::new(FairValueGlobals::new())))
+}
+
+/// Prepend Binance history (`(close_time_ms, close)`, ascending) to the live
+/// vol deque and return how many rows were adopted.
+///
+/// Live samples always win: history only goes before the oldest live row and
+/// at least one `step_secs` earlier, so the seam keeps the sampler's spacing.
+/// Each row's monotonic time is derived from its wall-clock AGE, never stamped
+/// `now`: a historical close presented as fresh would shrink the span the
+/// estimator divides by and inflate σ. Rows from the future or older than the
+/// window are skipped.
+fn merge_vol_seed(
+    samples: &mut VecDeque<(Instant, f64)>,
+    seed: &[(i64, f64)],
+    wall_now_ms: i64,
+    now: Instant,
+    window_secs: u64,
+    step_secs: u64,
+) -> usize {
+    let step = Duration::from_secs(step_secs);
+    let mut limit = match samples.front() {
+        Some((oldest_live, _)) => oldest_live.checked_sub(step),
+        None => Some(now),
+    };
+    let mut adopted = 0;
+    for &(close_ms, price) in seed.iter().rev() {
+        let Some(bound) = limit else { break };
+        let age_ms = wall_now_ms - close_ms;
+        if age_ms < 0 || age_ms > window_secs as i64 * 1000 {
+            continue;
+        }
+        let Some(t) = now.checked_sub(Duration::from_millis(age_ms as u64)) else { break };
+        if t > bound {
+            continue;
+        }
+        samples.push_front((t, price));
+        adopted += 1;
+        limit = t.checked_sub(step);
+    }
+    adopted
+}
+
+/// Start, at most once per asset per process, a background fetch that seeds
+/// `vol_samples` with the last window of Binance closes.
+///
+/// Without it every restart (deploy, watchdog, "restart to apply" in Setup)
+/// leaves FairValue idle for the ~585 s it takes to sample 40 prices. Never
+/// awaited by the evaluation: live sampling carries on while the fetch runs,
+/// and any failure (unsupported asset, geo-block, timeout, malformed data)
+/// just leaves the ordinary warmup in place. The separate per-market
+/// fair-value noise warmup is deliberately not seeded — Binance closes cannot
+/// reproduce past model outputs.
+fn maybe_start_vol_seed(asset: &str) {
+    let g = globals(asset);
+    if crate::helpers::time::binance_spot_symbol(asset).is_none()
+        || g.vol_seed_claimed.swap(true, Ordering::AcqRel)
+    {
+        return;
+    }
+    let asset = asset.to_string();
+    tokio::spawn(async move {
+        let now_ms = Utc::now().timestamp_millis();
+        let fetch = async {
+            let http = reqwest::Client::new();
+            crate::helpers::time::fetch_seed_closes(
+                &http, &asset, config::FAIRVALUE_VOL_WINDOW_SECS, config::FAIRVALUE_VOL_SAMPLE_SECS, now_ms,
+            ).await
+        };
+        let rows = match tokio::time::timeout(Duration::from_secs(8), fetch).await {
+            Ok(Ok(rows)) => rows,
+            Ok(Err(e)) => {
+                tracing::warn!("⚠️ FairValue [{asset}]: vol seed fetch failed ({e}) — live warmup continues");
+                return;
+            }
+            Err(_) => {
+                tracing::warn!("⚠️ FairValue [{asset}]: vol seed fetch timed out (8s) — live warmup continues");
+                return;
+            }
+        };
+        let (adopted, total) = {
+            let mut samples = match g.vol_samples.lock() {
+                Ok(s) => s,
+                Err(p) => p.into_inner(),
+            };
+            let adopted = merge_vol_seed(
+                &mut samples, &rows, Utc::now().timestamp_millis(), Instant::now(),
+                config::FAIRVALUE_VOL_WINDOW_SECS, config::FAIRVALUE_VOL_SAMPLE_SECS,
+            );
+            (adopted, samples.len())
+        };
+        tracing::info!(
+            "📈 FairValue [{asset}]: vol warmup seeded with {adopted} Binance closes ({total}/{} samples)",
+            config::FAIRVALUE_MIN_VOL_SAMPLES,
+        );
+    });
 }
 
 /// Edge value for a leg that cannot be priced (no ask, or an ask outside
@@ -1517,6 +1616,9 @@ impl Strategy for FairValueStrategyImpl {
         // ── Vol sampler feed (BEFORE structural gates) ───────────────────────
         // Warmup must progress even while the venue/strike is temporarily
         // unavailable, otherwise structural hiccups also stall the sampler.
+        if dc.fairvalue_vol_seed_enabled {
+            maybe_start_vol_seed(&ctx.crypto_filter);
+        }
         let spot = match ctx.snapshot.oracle_price.to_f64() {
             Some(s) if s > 0.0 => s,
             _ => { idle("no oracle price"); return Ok(StrategySignal::NoSignal) },
@@ -4968,6 +5070,68 @@ mod sports_consensus_tests {
         for ask in [dec!(0), dec!(1)] {
             assert_eq!(sports_side_edge(&l, ask, &rules(), Utc::now()).unwrap_err(), "no usable ask");
         }
+    }
+}
+
+#[cfg(test)]
+mod vol_seed_tests {
+    use super::*;
+
+    const WINDOW: u64 = 3600;
+    const STEP: u64 = 15;
+
+    /// `n` closes one step apart, the newest `newest_age_s` seconds before `wall_now_ms`.
+    fn seed(n: i64, newest_age_s: i64, wall_now_ms: i64) -> Vec<(i64, f64)> {
+        (0..n)
+            .map(|i| (wall_now_ms - (newest_age_s + (n - 1 - i) * STEP as i64) * 1000, 100.0 + i as f64))
+            .collect()
+    }
+
+    #[test]
+    fn a_cold_sampler_is_seeded_at_the_real_ages_so_sigma_sees_the_real_span() {
+        let (wall, now) = (10_000_000_i64, Instant::now() + Duration::from_secs(10_000));
+        let rows = seed(40, 2, wall);
+        let mut samples = VecDeque::new();
+
+        assert_eq!(merge_vol_seed(&mut samples, &rows, wall, now, WINDOW, STEP), 40);
+        // Stamped by age, not as 40 fresh samples: 39 steps of 15 s between the
+        // oldest and newest, which is the span the estimator divides by.
+        let span = samples.back().unwrap().0.duration_since(samples.front().unwrap().0);
+        assert_eq!(span, Duration::from_secs(39 * STEP));
+        assert_eq!(now.duration_since(samples.back().unwrap().0), Duration::from_secs(2));
+        let prices: Vec<f64> = samples.iter().map(|(_, p)| *p).collect();
+        assert_eq!(prices, rows.iter().map(|(_, p)| *p).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn live_samples_win_and_history_stops_a_full_step_before_them() {
+        let (wall, now) = (10_000_000_i64, Instant::now() + Duration::from_secs(10_000));
+        // Live sampling already ran for 20 s while the fetch was in flight.
+        let mut samples: VecDeque<(Instant, f64)> =
+            VecDeque::from(vec![(now - Duration::from_secs(20), 500.0), (now - Duration::from_secs(5), 501.0)]);
+        // History reaching right up to now overlaps the live rows.
+        let rows = seed(10, 0, wall);
+
+        let adopted = merge_vol_seed(&mut samples, &rows, wall, now, WINDOW, STEP);
+        // The oldest live sample is 20 s old, so history must be at least 35 s
+        // old: the rows aged 0, 15 and 30 s are skipped, ages 45..=135 adopted.
+        assert_eq!(adopted, 7);
+        assert_eq!(&samples.iter().rev().take(2).map(|(_, p)| *p).collect::<Vec<_>>(), &[501.0, 500.0]);
+        let seam = samples[adopted - 1].0;
+        assert!(samples[adopted].0.duration_since(seam) >= Duration::from_secs(STEP));
+    }
+
+    #[test]
+    fn rows_from_the_future_or_beyond_the_window_are_not_adopted() {
+        let (wall, now) = (10_000_000_i64, Instant::now() + Duration::from_secs(10_000));
+        let rows = vec![
+            (wall - (WINDOW as i64 + 15) * 1000, 90.0), // older than the window
+            (wall - 30_000, 100.0),
+            (wall + 5_000, 110.0),                      // clock skew: from the future
+        ];
+        let mut samples = VecDeque::new();
+        assert_eq!(merge_vol_seed(&mut samples, &rows, wall, now, WINDOW, STEP), 1);
+        assert_eq!(samples.front().unwrap().1, 100.0);
     }
 }
 

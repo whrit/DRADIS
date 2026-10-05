@@ -922,6 +922,14 @@ pub fn config_schema() -> Vec<ConfigFieldSchema> {
              were all profitable — a split the stop produces by selecting the bad paths, which only scoring those \
              paths at settlement can settle. Read the record at GET /api/fairvalue/stop-counterfactual?asset=btc. \
              Polymarket International only: the resolution comes from Gamma."));
+        v.push(F::new(g, e, "fairvalue_vol_seed_enabled", "Vol Warmup Seed", "bool", true,
+            "On the first evaluation of an asset after a restart, fill the realized-volatility window from the \
+             last hour of Binance 1-second closes (one per 15 s, the live sampler's cadence) instead of sampling \
+             for ~10 minutes before FairValue can price anything. Same spot data the live oracle reads, fetched \
+             from Binance's market-data-only host so US-hosted instances are not geo-blocked. Live samples always \
+             win; a failed or slow fetch just leaves the ordinary warmup running. The per-market fair-value noise \
+             warmup (~5 min) is not seeded and still applies. Takes effect on the next first evaluation, so \
+             enable it before a restart."));
         v.push(F::new(g, e, "fairvalue_post_exit_cooldown_secs", "Post-Exit Cooldown", "secs", true,
             "Seconds a token is locked out after any FairValue exit. Second entries into a market the viper had \
              just left went 0-for-4 for −$1.88 gross on 2026-08-13/14 while first entries were flat, and the \

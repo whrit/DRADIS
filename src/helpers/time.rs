@@ -132,6 +132,79 @@ pub async fn fetch_strike_price_from_close_time(
     Some(price)
 }
 
+/// Binance spot symbol for a supported underlying.
+///
+/// Strict on purpose, unlike `fetch_kline_open` above: for a volatility seed,
+/// falling back to BTC would quietly price ETH or SOL off Bitcoin's history.
+pub fn binance_spot_symbol(underlying: &str) -> Option<&'static str> {
+    match underlying.to_ascii_lowercase().as_str() {
+        "btc" => Some("BTCUSDT"),
+        "eth" => Some("ETHUSDT"),
+        "sol" => Some("SOLUSDT"),
+        _ => None,
+    }
+}
+
+/// `(close_time_ms, close)` of every CLOSED 1s candle that starts on a `step_ms`
+/// boundary. Kline rows are `[open_time, open, high, low, close, volume,
+/// close_time, …]`. Malformed rows and non-positive prices are dropped rather
+/// than coerced: a zero would read as a −100% return in the vol estimate.
+pub fn aligned_closes(rows: &[serde_json::Value], step_ms: i64, now_ms: i64) -> Vec<(i64, f64)> {
+    rows.iter()
+        .filter_map(|row| {
+            let r = row.as_array()?;
+            let open_time = r.first()?.as_i64()?;
+            let close = r.get(4)?.as_str()?.parse::<f64>().ok()?;
+            let close_time = r.get(6)?.as_i64()?;
+            let keep = open_time % step_ms == 0 && close_time < now_ms && close.is_finite() && close > 0.0;
+            keep.then_some((close_time, close))
+        })
+        .collect()
+}
+
+/// The last `window_secs` of Binance spot closes, one per `step_secs`, to seed
+/// FairValue's realized-vol sampler after a restart.
+///
+/// 1s candles because Spot has no 15s interval, and seeding with 1m closes
+/// would mix 60s and 15s returns in an estimator that assumes uniform spacing.
+/// Fetched as fixed 1000-second pages (the endpoint's 1000-row maximum, so an
+/// hour is four) requested concurrently: one page takes ~1.2 s, and four in a
+/// row would spend most of the caller's timeout. Fixed ranges rather than
+/// chaining on each page's last candle also mean a gap in the data cannot
+/// stall the walk. Served from Binance's documented market-data-only host:
+/// `api.binance.com` answers 451 to US IPs, the same geo-block the price
+/// raptor's WS host rotation works around, and this is the same spot data the
+/// live oracle reads. Returned ascending.
+pub async fn fetch_seed_closes(
+    http: &reqwest::Client,
+    underlying: &str,
+    window_secs: u64,
+    step_secs: u64,
+    now_ms: i64,
+) -> Result<Vec<(i64, f64)>, String> {
+    const PAGE_MS: i64 = 1_000_000;
+    let symbol = binance_spot_symbol(underlying)
+        .ok_or_else(|| format!("no Binance symbol for '{underlying}'"))?;
+    let step_ms = step_secs as i64 * 1000;
+    let window_start = now_ms - window_secs as i64 * 1000;
+    let pages = (window_start..now_ms).step_by(PAGE_MS as usize).map(|start| async move {
+        let end = (start + PAGE_MS - 1).min(now_ms);
+        let url = format!(
+            "https://data-api.binance.vision/api/v3/klines?symbol={symbol}&interval=1s&startTime={start}&endTime={end}&limit=1000",
+        );
+        http.get(&url).send().await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| e.to_string())?
+            .json::<Vec<serde_json::Value>>().await
+            .map_err(|e| e.to_string())
+    });
+    let mut out = Vec::new();
+    for page in futures::future::join_all(pages).await {
+        out.extend(aligned_closes(&page?, step_ms, now_ms));
+    }
+    Ok(out)
+}
+
 /// Fetch historical strike price by parsing market description for date/time
 pub async fn fetch_historical_strike_price(
     http: &reqwest::Client,
@@ -465,5 +538,35 @@ mod hourly_slug_tests {
     fn dst_fall_back_dedupes_the_repeated_hour() {
         let slugs = generate_hourly_market_slugs("btc", utc("2026-11-01T05:30:00Z"), 1);
         assert_eq!(slugs, vec!["bitcoin-up-or-down-november-1-2026-1am-et"]);
+    }
+}
+
+#[cfg(test)]
+mod vol_seed_fetch_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// `[open_time, open, high, low, close, volume, close_time]`, as Binance sends it.
+    fn kline(open_ms: i64, close: &str) -> serde_json::Value {
+        json!([open_ms, "1", "1", "1", close, "0", open_ms + 999])
+    }
+
+    #[test]
+    fn only_closed_candles_on_the_step_boundary_with_a_real_price_are_kept() {
+        let rows = vec![
+            kline(15_000, "100.5"),  // on the 15 s boundary: kept, at its close time
+            kline(16_000, "101.0"),  // off-boundary second: skipped
+            kline(30_000, "0"),      // a zero would read as a -100% return: dropped
+            json!(["bad"]),          // malformed: dropped, not coerced
+            kline(45_000, "102.0"),  // still open at now_ms: dropped
+        ];
+        assert_eq!(aligned_closes(&rows, 15_000, 45_500), vec![(15_999, 100.5)]);
+    }
+
+    #[test]
+    fn an_unknown_underlying_has_no_symbol_rather_than_bitcoins() {
+        assert_eq!(binance_spot_symbol("ETH"), Some("ETHUSDT"));
+        assert_eq!(binance_spot_symbol("doge"), None);
+        assert_eq!(binance_spot_symbol("sports"), None);
     }
 }
