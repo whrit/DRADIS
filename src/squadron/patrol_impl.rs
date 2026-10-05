@@ -191,6 +191,30 @@ fn quote_epoch_is_current(map: &QuoteEpochs, key: &PositionKey, epoch: u64) -> b
     map.get(key).map(|(e, _)| *e) == Some(epoch)
 }
 
+/// Wallet holding of `token` before an entry, and whether it was actually observed.
+///
+/// `(0, false)` on error or timeout: a FAILED read and a true zero are different
+/// answers, and the caller refuses on the former (see the entry path). A successful
+/// response that does not parse still reads as `(0, true)`, unchanged from the
+/// inline code this replaced.
+async fn read_entry_baseline(
+    client: &polymarket_client_sdk_v2::clob::Client<
+        polymarket_client_sdk_v2::auth::state::Authenticated<polymarket_client_sdk_v2::auth::Normal>,
+    >,
+    token: &MarketId,
+    leg: &str,
+    strategy: &str,
+) -> (Decimal, bool) {
+    let mut req = BalanceAllowanceRequest::default();
+    req.asset_type = AssetType::Conditional;
+    req.token_id = Some(u256_from_market_id(token).unwrap_or_default());
+    match tokio::time::timeout(Duration::from_secs(10), client.balance_allowance(req)).await {
+        Ok(Ok(resp)) => (Decimal::from_str(&resp.balance.to_string()).unwrap_or(dec!(0)) / dec!(1_000_000), true),
+        Ok(Err(e)) => { warn!("⚠️ {} baseline balance_allowance error [{}]: {}", leg, strategy, e); (dec!(0), false) }
+        Err(_) => { warn!("⚠️ {} baseline balance_allowance timed out (10s) [{}]", leg, strategy); (dec!(0), false) }
+    }
+}
+
 /// One live post-only GTC ask resting against a filled maker position.
 ///
 /// The position stays in the position map while the ask rests — it is still
@@ -825,6 +849,10 @@ impl Squadron {
 
         // ── Core tick loop: 3 arms ────────────────────────────────────────────
         let mut ticker = interval(config::main_ticker_interval());
+        // Skip, not the default Burst: after a stall (slow entry I/O, a long
+        // evaluation) Burst fires every missed tick back-to-back against the same
+        // book. One overdue evaluation of the current state is all that is useful.
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 biased;
@@ -2628,14 +2656,23 @@ impl Squadron {
                                     // would liquidate shares the strategy never bought. The bool says
                                     // whether the zero was observed or merely assumed, so a caller that
                                     // cannot tolerate fail-open can refuse instead.
-                                    let (primary_baseline, primary_baseline_read_ok) = {
-                                        let mut req = BalanceAllowanceRequest::default(); req.asset_type = AssetType::Conditional; req.token_id = Some(u256_from_market_id(&params.token_id).unwrap_or_default());
-                                        match tokio::time::timeout(Duration::from_secs(10), trading_client.balance_allowance(req)).await {
-                                            Ok(Ok(resp)) => (Decimal::from_str(&resp.balance.to_string()).unwrap_or(dec!(0)) / dec!(1_000_000), true),
-                                            Ok(Err(e)) => { warn!("⚠️ entry baseline balance_allowance error [{}]: {}", sn, e); (dec!(0), false) }
-                                            Err(_) => { warn!("⚠️ entry baseline balance_allowance timed out (10s) [{}]", sn); (dec!(0), false) }
-                                        }
-                                    };
+                                    //
+                                    // A paired entry reads its partner's baseline at the same time:
+                                    // both reads are on this tick's critical path, so the loop now
+                                    // waits for the slower of the two rather than their sum (up to
+                                    // 20s before). The refusal order below is unchanged — primary
+                                    // failure, then Helm, then partner failure, then the orphan
+                                    // guard — so a refused primary still never posts; it only no
+                                    // longer skips the partner's GET.
+                                    let ((primary_baseline, primary_baseline_read_ok), pair_read) = tokio::join!(
+                                        read_entry_baseline(&trading_client, &params.token_id, "entry", &sn),
+                                        async {
+                                            match &pair_params {
+                                                Some(pp) => Some(read_entry_baseline(&trading_client, &pp.token_id, "pair", &sn).await),
+                                                None => None,
+                                            }
+                                        },
+                                    );
                                     // Helm refuses an entry it cannot attribute cleanly.
                                     //
                                     // The conviction record is the whole point of this viper: the
@@ -2705,24 +2742,16 @@ impl Squadron {
 
                                     let vc = if target_is_neg_risk { EXCHANGE_NEG_RISK } else { EXCHANGE_NORMAL };
 
-                                    if let Some(pp) = pair_params {
+                                    if let (Some(pp), Some((pair_baseline, pair_baseline_read_ok))) = (pair_params, pair_read) {
                                         let pp_token_m = pp.token_id.clone(); // neutral key (slice 2a)
                                         let actual_pair_entry_price = if pp.post_only { pp.price } else { (pp.price + config::BUY_PRICE_OFFSET).min(config::MAX_BUY_LIMIT_PRICE) };
                                         let vc_p = if pp.is_neg_risk { EXCHANGE_NEG_RISK } else { EXCHANGE_NORMAL };
-                                        // Same `(value, read_ok)` shape as the primary leg: a failed
-                                        // read and an observed zero are different answers, and both
-                                        // arms used to return zero. A zero baseline attributes the
+                                        // Same `(value, read_ok)` shape as the primary leg (read
+                                        // concurrently with it above): a failed read and an observed
+                                        // zero are different answers. A zero baseline attributes the
                                         // whole wallet holding to this leg, and it also defeats the
                                         // orphan accumulation guard below, which compares the
                                         // baseline against the order minimum and passes on zero.
-                                        let (pair_baseline, pair_baseline_read_ok) = {
-                                            let mut req = BalanceAllowanceRequest::default(); req.asset_type = AssetType::Conditional; req.token_id = Some(u256_from_market_id(&pp.token_id).unwrap_or_default());
-                                            match tokio::time::timeout(Duration::from_secs(10), trading_client.balance_allowance(req)).await {
-                                                Ok(Ok(resp)) => (Decimal::from_str(&resp.balance.to_string()).unwrap_or(dec!(0)) / dec!(1_000_000), true),
-                                                Ok(Err(e)) => { warn!("⚠️ pair baseline balance_allowance error [{}]: {}", sn, e); (dec!(0), false) }
-                                                Err(_) => { warn!("⚠️ pair baseline balance_allowance timed out (10s) [{}]", sn); (dec!(0), false) }
-                                            }
-                                        };
                                         // The paired entry needs BOTH baselines observed. Refusing
                                         // here rather than inside the orphan guard keeps the two
                                         // reasons distinct in the log: this is "we do not know what
