@@ -18,7 +18,7 @@
  * Runtime API proxy — forwards all /api/* requests to the DRADIS engine.
  *
  * This replaces the next.config.ts rewrite approach. Rewrites are evaluated
- * at BUILD time, so DRADIS_API_URL is unset during `npm run build` and the
+ * at BUILD time, so DRADIS_API_URL is unset during `pnpm build` and the
  * destination bakes in as localhost:9000 — which fails inside Docker when the
  * engine is on a different container (dradis-btc:9000).
  *
@@ -38,71 +38,57 @@
  * Basic Auth owns that header browser-side. We translate it to
  * Authorization: Bearer for the engine's /api/setup/* admin gate.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.DRADIS_API_URL ?? 'http://127.0.0.1:9000';
+const API_BASE = process.env.DRADIS_API_URL ?? "http://127.0.0.1:9000";
 // Server-side only — NOT NEXT_PUBLIC_ so it never appears in the browser bundle.
-const API_KEY  = process.env.DRADIS_API_KEY ?? '';
+const API_KEY = process.env.DRADIS_API_KEY ?? "";
 
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const url = new URL(req.url);
-  const target = `${API_BASE}/api/${path.join('/')}${url.search}`;
+  const target = `${API_BASE}/api/${path.join("/")}${url.search}`;
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (API_KEY) headers['X-API-Key'] = API_KEY;
-  const adminToken = req.headers.get('x-admin-token');
-  if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (API_KEY) headers["X-API-Key"] = API_KEY;
+  const adminToken = req.headers.get("x-admin-token");
+  if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
 
   try {
     const upstream = await fetch(target, {
-      method:  req.method,
+      method: req.method,
       headers,
-      body:    req.method !== 'GET' && req.method !== 'HEAD'
-                 ? await req.text()
-                 : undefined,
+      body: req.method !== "GET" && req.method !== "HEAD" ? await req.text() : undefined,
       // Don't cache — always live data
-      cache: 'no-store',
+      cache: "no-store",
     });
 
     const text = await upstream.text();
     return new NextResponse(text, {
-      status:  upstream.status,
-      headers: { 'Content-Type': 'application/json' },
+      status: upstream.status,
+      headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error(`[proxy] failed to reach ${target}:`, err);
-    return NextResponse.json({ error: 'DRADIS engine unreachable' }, { status: 503 });
+    return NextResponse.json({ error: "DRADIS engine unreachable" }, { status: 503 });
   }
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   return proxy(req, path);
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   return proxy(req, path);
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   return proxy(req, path);
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   return proxy(req, path);
 }
@@ -114,4 +100,3 @@ export async function DELETE(
   const { path } = await params;
   return proxy(req, path);
 }
-

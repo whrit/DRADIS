@@ -14,24 +14,31 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import type { Metadata } from 'next';
-import './globals.css';
-import DemoBanner from '@/components/DemoBanner';
-import { DEMO_MODE } from '@/lib/demo';
+import type { Metadata } from "next";
+import "./globals.css";
+import DemoBanner from "@/components/DemoBanner";
+import { DEMO_MODE } from "@/lib/demo";
+import { Geist, Geist_Mono } from "next/font/google";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
+
+const sans = Geist({ subsets: ["latin"], variable: "--font-sans" });
+const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: 'DRADIS Control Tower',
-  description: 'Polymarket strategy orchestration dashboard',
+  title: "DRADIS Control Tower",
+  description: "Polymarket strategy orchestration dashboard",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className={DEMO_MODE ? 'pb-12' : undefined}>
-        {children}
+    <html lang="en" className={cn("dark antialiased", sans.variable, mono.variable)}>
+      <body className={cn("min-h-dvh font-sans", DEMO_MODE && "pb-12")}>
+        <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        <Toaster position="bottom-right" />
         <DemoBanner />
       </body>
     </html>
   );
 }
-

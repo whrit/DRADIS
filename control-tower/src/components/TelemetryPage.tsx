@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,26 +16,57 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import useSWR from 'swr';
+import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, Brush,
-} from 'recharts';
-import { getTelemetryHistory, getTelemetryAssets } from '@/lib/api';
-import type { TelemetrySample } from '@/lib/types';
-import type { VenueId } from '@/lib/setupApi';
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  Brush,
+} from "recharts";
+import { getTelemetryHistory, getTelemetryAssets } from "@/lib/api";
+import type { TelemetrySample } from "@/lib/types";
+import type { VenueId } from "@/lib/setupApi";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ChartContainer, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SectionHeader, Stat, StatusDot, TONE_TEXT, signTone } from "@/components/shared";
 
-const POLL_MS = 2000;            // server samples at 2s — match it while live
-const SAMPLES_PER_MIN = 30;      // 60s / 2s
-
-const ASSET_EMOJI: Record<string, string> = { btc: '₿', eth: 'Ξ', sol: '◎' };
+const POLL_MS = 2000; // server samples at 2s — match it while live
+const SAMPLES_PER_MIN = 30; // 60s / 2s
 
 const WINDOWS: { mins: number; label: string }[] = [
-  { mins: 5,  label: '5m' },
-  { mins: 15, label: '15m' },
-  { mins: 30, label: '30m' },
-  { mins: 60, label: '1h' },
+  { mins: 5, label: "5m" },
+  { mins: 15, label: "15m" },
+  { mins: 30, label: "30m" },
+  { mins: 60, label: "1h" },
 ];
 
 // ── Chart-ready row derived from a server TelemetrySample ─────────────────────
@@ -48,35 +79,42 @@ interface Row {
   accel: number;
   d60: number;
   d10: number;
-  funding: number;   // percent
-  oi: number;        // open interest (base contracts)
-  oiDelta: number;   // percent change vs previous poll
-  cvd: number;       // taker buy/sell ratio (1.0 = balanced)
-  pulse: number;     // institutional pulse (signed z-score)
+  funding: number; // percent
+  oi: number; // open interest (base contracts)
+  oiDelta: number; // percent change vs previous poll
+  cvd: number; // taker buy/sell ratio (1.0 = balanced)
+  pulse: number; // institutional pulse (signed z-score)
   coherence: number; // 0..1 agreement
-  ibitBps: number;   // per-ETF premium (bps)
+  ibitBps: number; // per-ETF premium (bps)
   fbtcBps: number;
   arkbBps: number;
   tideOpen: boolean; // US cash session live
   // Horizon Raptor
-  tradfiVel: number;   // SPY+QQQ 5s velocity
-  macroCoh: number;    // BTC/QQQ correlation
-  vix: number;         // UVXY price
-  vixVel: number;      // UVXY 5s velocity
+  tradfiVel: number; // SPY+QQQ 5s velocity
+  macroCoh: number; // BTC/QQQ correlation
+  vix: number; // UVXY price
+  vixVel: number; // UVXY 5s velocity
   horizonOpen: boolean; // US cash session
 }
 
 function fmtClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  return new Date(ms).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   });
 }
 
 // Sports telemetry now spans days (de-duplicated ~2h polls), so a seconds-level
 // clock is ambiguous. Label these points with month/day + HH:MM instead.
 function fmtDayClock(ms: number): string {
-  return new Date(ms).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  return new Date(ms).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -84,8 +122,11 @@ function fmtDayClock(ms: number): string {
 function fmtKickoff(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('en-US', {
-    weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  return d.toLocaleString("en-US", {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -94,7 +135,7 @@ function fmtKickoff(iso: string): string {
 // at the boundary — otherwise chart/stat formatters call .toFixed() on a string and
 // crash the whole page.
 const num = (v: unknown): number => {
-  const n = typeof v === 'number' ? v : parseFloat(v as string);
+  const n = typeof v === "number" ? v : parseFloat(v as string);
   return Number.isFinite(n) ? n : 0;
 };
 
@@ -133,10 +174,10 @@ function toRow(s: TelemetrySample): Row {
 interface SportsRow {
   t: number;
   time: string;
-  consensus: number;   // vig-free consensus implied prob (0..1)
-  drift: number;       // Δ consensus vs previous poll (signed)
-  dispersion: number;  // spread of per-book implied probs (0..1)
-  numBooks: number;    // bookmakers in the sample
+  consensus: number; // vig-free consensus implied prob (0..1)
+  drift: number; // Δ consensus vs previous poll (signed)
+  dispersion: number; // spread of per-book implied probs (0..1)
+  numBooks: number; // bookmakers in the sample
 }
 
 function toSportsRow(s: TelemetrySample): SportsRow {
@@ -155,11 +196,11 @@ function toSportsRow(s: TelemetrySample): SportsRow {
 interface TennisRow {
   t: number;
   time: string;
-  gamesP1: number;    // games won in the CURRENT set
+  gamesP1: number; // games won in the CURRENT set
   gamesP2: number;
-  setsP1: number;     // sets won in the match
+  setsP1: number; // sets won in the match
   setsP2: number;
-  feedAge: number;    // seconds since the score last moved (-1 → 0, unknown)
+  feedAge: number; // seconds since the score last moved (-1 → 0, unknown)
 }
 
 function toTennisRow(s: TelemetrySample): TennisRow {
@@ -177,12 +218,11 @@ function toTennisRow(s: TelemetrySample): TennisRow {
   };
 }
 
-// Player series colors. Amber/sky rather than the emerald/sky used elsewhere:
-// the two sides of a match are the one place on this page where two series must
-// stay tellable apart under color-vision deficiency, and emerald↔sky separates
-// by only ΔE 3.0 under tritanopia, versus 27.5 for this pair.
-const P1_COLOR = '#f59e0b';
-const P2_COLOR = '#38bdf8';
+// Player series colors. The two sides of a match must stay tellable apart under
+// color-vision deficiency; use distinct semantic series and a dashed player-2
+// line as a non-color cue, with the actual player names in every legend.
+const P1_COLOR = "var(--chart-3)";
+const P2_COLOR = "var(--chart-2)";
 
 // Mirrors config::TENNIS_SCORE_STALENESS_SECS. Drawn as a reference line so the
 // chart shows *why* the raptor flips to disconnected, rather than the pill just
@@ -191,14 +231,27 @@ const TENNIS_STALENESS_SECS = 600;
 
 // ── Signal-graph card ─────────────────────────────────────────────────────────
 
-interface SeriesDef<R> { key: keyof R; label: string; color: string }
+interface SeriesDef<R> {
+  key: keyof R;
+  label: string;
+  color: string;
+}
 
 function SignalChart<R extends { time: string }>({
-  title, subtitle, data, series, fmtY, zeroLine = false, refY, refLabel,
-  lineType = 'monotone',
+  title,
+  subtitle,
+  data,
+  series,
+  fmtY,
+  zeroLine = false,
+  refY,
+  refLabel,
+  lineType = "monotone",
+  connected,
 }: {
   title: string;
   subtitle: string;
+  connected?: boolean;
   data: R[];
   series: SeriesDef<R>[];
   fmtY: (v: number) => string;
@@ -212,197 +265,240 @@ function SignalChart<R extends { time: string }>({
    * 'stepAfter', or the curve draws values the score never held (3.5 games)
    * and implies the change happened gradually between polls.
    */
-  lineType?: 'monotone' | 'stepAfter';
+  lineType?: "monotone" | "stepAfter";
 }) {
   const latest = data[data.length - 1];
+  const config: ChartConfig = Object.fromEntries(
+    series.map((s) => [String(s.key), { label: s.label, color: s.color }]),
+  );
   return (
-    <div className="card p-4">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <p className="label-muted text-[10px]">{title}</p>
-          <p className="text-[10px] text-gray-600 font-mono">{subtitle}</p>
-        </div>
-        <div className="flex items-center gap-3 text-[10px] font-mono">
-          {series.map(s => (
-            <div key={String(s.key)} className="flex items-center gap-1.5">
-              <span className="w-3 h-0.5 inline-block" style={{ background: s.color }} />
-              <span className="text-gray-500">{s.label}</span>
-              {latest && <span className="text-gray-300">{fmtY(latest[s.key] as number)}</span>}
-            </div>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{subtitle}</CardDescription>
+        <CardAction>
+          <ConnPill label="Feed" live={connected} />
+        </CardAction>
+        <div className="col-span-full flex flex-wrap gap-x-5 gap-y-2 pt-2">
+          {series.map((s) => (
+            <Stat
+              key={String(s.key)}
+              label={s.label}
+              value={latest ? fmtY(latest[s.key] as number) : "—"}
+            />
           ))}
         </div>
-      </div>
-      <div style={{ height: 200 }}>
+      </CardHeader>
+      <CardContent>
         {data.length < 2 ? (
-          <div className="h-full flex items-center justify-center text-gray-600 text-xs">
-            Collecting samples…
-          </div>
+          <Empty className="h-50">
+            <EmptyHeader>
+              <EmptyTitle>Collecting samples…</EmptyTitle>
+              <EmptyDescription>
+                At least two readings are needed to plot this signal.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} syncId="telemetry" margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e32" vertical={false} />
+          <ChartContainer config={config} className="h-50 w-full aspect-auto">
+            <LineChart
+              data={data}
+              syncId="telemetry"
+              margin={{ top: 6, right: 12, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis
                 dataKey="time"
-                tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "monospace" }}
                 tickLine={false}
-                axisLine={{ stroke: '#1e1e32' }}
+                axisLine={{ stroke: "var(--border)" }}
                 interval="preserveStartEnd"
                 minTickGap={40}
               />
               <YAxis
-                tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "monospace" }}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={fmtY}
                 width={60}
-                domain={['auto', 'auto']}
+                domain={["auto", "auto"]}
               />
               <Tooltip
-                contentStyle={{
-                  background: '#0d0d1a', border: '1px solid #1e1e32',
-                  borderRadius: 8, fontSize: 11, fontFamily: 'monospace',
-                }}
-                labelStyle={{ color: '#9ca3af' }}
-                formatter={(v, name) => [fmtY(Number(v)), String(name)]}
+                content={
+                  <ChartTooltipContent
+                    nameKey="dataKey"
+                    formatter={(v, name) => (
+                      <>
+                        <span className="text-muted-foreground">{String(name)}</span>
+                        <span className="ml-auto font-mono tabular-nums">{fmtY(Number(v))}</span>
+                      </>
+                    )}
+                  />
+                }
               />
-              {zeroLine && <ReferenceLine y={0} stroke="#374151" strokeDasharray="4 4" />}
-              {typeof refY === 'number' && (
+              {zeroLine && <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="4 4" />}
+              {typeof refY === "number" && (
                 <ReferenceLine
                   y={refY}
-                  stroke="#4b5563"
+                  stroke="var(--muted-foreground)"
                   strokeDasharray="4 4"
-                  label={refLabel ? { value: refLabel, position: 'insideTopLeft', fill: '#6b7280', fontSize: 9 } : undefined}
+                  label={
+                    refLabel
+                      ? {
+                          value: refLabel,
+                          position: "insideTopLeft",
+                          fill: "var(--muted-foreground)",
+                          fontSize: 9,
+                        }
+                      : undefined
+                  }
                 />
               )}
-              {series.map(s => (
+              {series.map((s, index) => (
                 <Line
                   key={String(s.key)}
                   type={lineType}
                   dataKey={s.key as string}
                   name={s.label}
                   stroke={s.color}
+                  strokeDasharray={lineType === "stepAfter" && index === 1 ? "5 3" : undefined}
                   strokeWidth={1.8}
                   dot={false}
                   isAnimationActive={false}
                 />
               ))}
             </LineChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
 // ── Overview scrubber (only shown when paused) ────────────────────────────────
 
 function Scrubber({
-  data, range, onChange,
+  data,
+  range,
+  onChange,
 }: {
   data: Row[];
   range: { startIndex: number; endIndex: number };
   onChange: (r: { startIndex: number; endIndex: number }) => void;
 }) {
   return (
-    <div className="card p-3">
-      <p className="label-muted text-[10px] mb-1">Scrub window — drag the handles to inspect a past interval</p>
-      <div style={{ height: 70 }}>
-        <ResponsiveContainer width="100%" height="100%">
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Scrub window</CardTitle>
+        <CardDescription>Drag the handles to inspect a past interval</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer
+          config={{ oracle: { label: "Oracle price", color: "var(--chart-1)" } }}
+          className="h-17.5 w-full aspect-auto"
+        >
           <LineChart data={data} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-            <YAxis hide domain={['auto', 'auto']} />
-            <Line type="monotone" dataKey="oracle" stroke="#10b981" strokeWidth={1.2} dot={false} isAnimationActive={false} />
+            <YAxis hide domain={["auto", "auto"]} />
+            <Line
+              type="monotone"
+              dataKey="oracle"
+              stroke="var(--chart-1)"
+              strokeWidth={1.2}
+              dot={false}
+              isAnimationActive={false}
+            />
             <Brush
               dataKey="time"
               height={22}
               travellerWidth={8}
-              stroke="#6366f1"
-              fill="#13131f"
+              stroke="var(--primary)"
+              fill="var(--muted)"
               startIndex={range.startIndex}
               endIndex={range.endIndex}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onChange={(r: any) => {
-                if (typeof r?.startIndex === 'number' && typeof r?.endIndex === 'number') {
+                if (typeof r?.startIndex === "number" && typeof r?.endIndex === "number") {
                   onChange({ startIndex: r.startIndex, endIndex: r.endIndex });
                 }
               }}
-              tickFormatter={() => ''}
+              tickFormatter={() => ""}
             />
           </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+        </ChartContainer>
+      </CardContent>
+    </Card>
   );
 }
 
 // ── Small UI bits ─────────────────────────────────────────────────────────────
 
 function AssetSelector({
-  assets, selected, onChange,
-}: { assets: string[]; selected: string; onChange: (a: string) => void }) {
+  assets,
+  selected,
+  onChange,
+}: {
+  assets: string[];
+  selected: string;
+  onChange: (a: string) => void;
+}) {
   if (assets.length <= 1) return null;
   return (
-    <div className="flex items-center gap-1">
-      {assets.map(a => {
-        const active = a === selected;
-        return (
-          <button
-            key={a}
-            onClick={() => onChange(a)}
-            className={[
-              'flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors',
-              active
-                ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-                : 'bg-[#13131f] border-[#1e1e32] text-gray-500 hover:border-gray-600 hover:text-gray-300',
-            ].join(' ')}
-          >
-            <span>{ASSET_EMOJI[a] ?? '◈'}</span>
-            <span>{a.toUpperCase()}</span>
-          </button>
-        );
-      })}
-    </div>
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={selected}
+      aria-label="Crypto asset"
+      onValueChange={(value) => {
+        if (value) onChange(value);
+      }}
+    >
+      {assets.map((a) => (
+        <ToggleGroupItem key={a} value={a}>
+          {a.toUpperCase()}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 
 /** `live` is undefined before the first sample: unknown renders grey, not as a red "down" ([B43]). */
 function ConnPill({ label, live }: { label: string; live: boolean | undefined }) {
-  const dot  = live === undefined ? 'bg-gray-600' : live ? 'bg-green-400 animate-pulse' : 'bg-red-500';
-  const text = live === undefined ? 'text-gray-500' : live ? 'text-green-400' : 'text-red-400';
   return (
-    <div className="flex items-center gap-1.5 text-[10px] font-mono" title={live === undefined ? 'no reading yet' : undefined}>
-      <span className={`h-2 w-2 rounded-full ${dot}`} />
-      <span className={text}>{label}</span>
-    </div>
+    <Badge variant={live === undefined ? "secondary" : live ? "success" : "destructive"}>
+      <StatusDot
+        tone={live === undefined ? "muted" : live ? "success" : "destructive"}
+        pulse={live === true}
+      />
+      {label} · {live === undefined ? "No reading yet" : live ? "Live" : "Offline"}
+    </Badge>
   );
 }
 
-function StatCard({ label, value, valueClass = '' }: { label: string; value: string; valueClass?: string }) {
+function StatCard({
+  label,
+  value,
+  valueClass = "",
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
   return (
-    <div className="card px-4 py-3 flex flex-col gap-1">
-      <span className="label-muted">{label}</span>
-      <span className={`stat-value ${valueClass}`}>{value}</span>
-    </div>
+    <Card size="sm" className="px-4">
+      <Stat label={label} value={<span className={valueClass}>{value}</span>} />
+    </Card>
   );
 }
 
 function fmtSigned(n: number): string {
-  const sign = n > 0 ? '+' : '';
+  const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}`;
-}
-
-// Compact large magnitudes (open interest) → "12.3K", "1.2M".
-function fmtCompact(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
-  return n.toFixed(2);
 }
 
 // ── Tide Raptor — Institutional Pulse card (BTC-only) ─────────────────────────
 
 function fmtBps(n: number): string {
-  return `${n >= 0 ? '+' : ''}${n.toFixed(1)} bps`;
+  return `${n >= 0 ? "+" : ""}${n.toFixed(1)} bps`;
 }
 
 function TideCard({ data, latest }: { data: Row[]; latest: Row }) {
@@ -412,97 +508,125 @@ function TideCard({ data, latest }: { data: Row[]; latest: Row }) {
 
   // Greyed/idle styling when the US cash session is closed: premiums are stale
   // and the pulse is intentionally held at 0.
-  const dim = open ? '' : 'opacity-50';
+  const dim = open ? "" : "opacity-50";
   const pulseClass = !open
-    ? 'text-gray-500'
-    : pulse > 0 ? 'text-green-400' : pulse < 0 ? 'text-red-400' : 'text-gray-400';
+    ? "text-muted-foreground"
+    : pulse > 0
+      ? "text-success"
+      : pulse < 0
+        ? "text-destructive"
+        : "text-muted-foreground";
 
   // Coherence drives conviction: high agreement = trust the pulse.
   const cohClass = !open
-    ? 'text-gray-500'
-    : coherence >= 0.66 ? 'text-green-400' : coherence >= 0.34 ? 'text-amber-400' : 'text-gray-400';
+    ? "text-muted-foreground"
+    : coherence >= 0.66
+      ? "text-success"
+      : coherence >= 0.34
+        ? "text-warning"
+        : "text-muted-foreground";
 
   const etf = (label: string, bps: number) => (
-    <div className="card px-3 py-2 flex flex-col gap-0.5">
-      <span className="label-muted text-[10px]">{label}</span>
-      <span className={`font-mono text-sm ${!open ? 'text-gray-500' : bps > 0 ? 'text-green-400' : bps < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-        {open ? fmtBps(bps) : '—'}
-      </span>
-    </div>
+    <Stat label={label} value={open ? fmtBps(bps) : "—"} tone={open ? signTone(bps) : "muted"} />
   );
-
   return (
-    <div className="card p-4 border border-indigo-500/20">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="label-muted text-[10px]">🌊 Institutional Pulse · Tide Raptor</p>
-          <p className="text-[10px] text-gray-600 font-mono">
-            Spot-BTC-ETF premium vs synthetic iNAV — IBIT / FBTC / ARKB · live: Convergence · GBoost · Basis
-          </p>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Institutional pulse · Tide Raptor</CardTitle>
+        <CardDescription>
+          Spot-BTC-ETF premium vs synthetic iNAV — IBIT / FBTC / ARKB · live: Convergence · GBoost ·
+          Basis
+        </CardDescription>
+        <CardAction>
+          <Badge variant={open ? "success" : "secondary"}>
+            <StatusDot tone={open ? "success" : "muted"} pulse={open} />
+            {open ? "US session open" : "Market closed"}
+          </Badge>
+        </CardAction>
+        <div className={`col-span-full grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 ${dim}`}>
+          <Stat
+            label="Pulse (Iₚ)"
+            value={
+              <span className={pulseClass}>
+                {open ? `${pulse >= 0 ? "+" : ""}${pulse.toFixed(2)}σ` : "—"}
+              </span>
+            }
+          />
+          <Stat
+            label="Coherence (C)"
+            value={<span className={cohClass}>{open ? coherence.toFixed(2) : "—"}</span>}
+          />
+          {etf("IBIT", latest.ibitBps)}
+          {etf("FBTC", latest.fbtcBps)}
+          {etf("ARKB", latest.arkbBps)}
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] font-mono">
-          <span className={`h-2 w-2 rounded-full ${open ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
-          <span className={open ? 'text-green-400' : 'text-gray-500'}>
-            {open ? 'US SESSION OPEN' : 'MARKET CLOSED'}
-          </span>
+      </CardHeader>
+      <CardContent>
+        <div className="h-40">
+          {data.length < 2 ? (
+            <Empty className="h-full">
+              <EmptyDescription>
+                {open ? "Collecting samples…" : "Pulse resumes at the US cash open (09:30 ET)"}
+              </EmptyDescription>
+            </Empty>
+          ) : (
+            <ChartContainer
+              config={
+                {
+                  pulse: { label: "pulse σ", color: "var(--chart-1)" },
+                  coherence: { label: "coherence", color: "var(--chart-2)" },
+                } satisfies ChartConfig
+              }
+              className="h-40 w-full aspect-auto"
+            >
+              <LineChart
+                data={data}
+                syncId="telemetry"
+                margin={{ top: 6, right: 12, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "monospace" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--border)" }}
+                  interval="preserveStartEnd"
+                  minTickGap={40}
+                />
+                <YAxis
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "monospace" }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => v.toFixed(1)}
+                  width={44}
+                  domain={["auto", "auto"]}
+                />
+                <Tooltip content={<ChartTooltipContent nameKey="dataKey" />} />
+                <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="4 4" />
+                <Line
+                  type="monotone"
+                  dataKey="pulse"
+                  name="pulse σ"
+                  stroke="var(--chart-1)"
+                  strokeWidth={1.8}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="coherence"
+                  name="coherence"
+                  stroke="var(--chart-2)"
+                  strokeWidth={1.2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ChartContainer>
+          )}
         </div>
-      </div>
-
-      <div className={`grid grid-cols-2 sm:grid-cols-5 gap-3 ${dim}`}>
-        <div className="card px-3 py-2 flex flex-col gap-0.5">
-          <span className="label-muted text-[10px]">Pulse (Iₚ)</span>
-          <span className={`font-mono text-lg ${pulseClass}`}>
-            {open ? `${pulse >= 0 ? '+' : ''}${pulse.toFixed(2)}σ` : '—'}
-          </span>
-        </div>
-        <div className="card px-3 py-2 flex flex-col gap-0.5">
-          <span className="label-muted text-[10px]">Coherence (C)</span>
-          <span className={`font-mono text-lg ${cohClass}`}>
-            {open ? coherence.toFixed(2) : '—'}
-          </span>
-        </div>
-        {etf('IBIT', latest.ibitBps)}
-        {etf('FBTC', latest.fbtcBps)}
-        {etf('ARKB', latest.arkbBps)}
-      </div>
-
-      <div className="mt-3" style={{ height: 160 }}>
-        {data.length < 2 ? (
-          <div className="h-full flex items-center justify-center text-gray-600 text-xs">
-            {open ? 'Collecting samples…' : 'Pulse resumes at the US cash open (09:30 ET)'}
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} syncId="telemetry" margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e32" vertical={false} />
-              <XAxis
-                dataKey="time"
-                tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}
-                tickLine={false}
-                axisLine={{ stroke: '#1e1e32' }}
-                interval="preserveStartEnd"
-                minTickGap={40}
-              />
-              <YAxis
-                tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => v.toFixed(1)}
-                width={44}
-                domain={['auto', 'auto']}
-              />
-              <Tooltip
-                contentStyle={{ background: '#0d0d1a', border: '1px solid #1e1e32', borderRadius: 8, fontSize: 11, fontFamily: 'monospace' }}
-                labelStyle={{ color: '#9ca3af' }}
-              />
-              <ReferenceLine y={0} stroke="#374151" strokeDasharray="4 4" />
-              <Line type="monotone" dataKey="pulse" name="pulse σ" stroke="#818cf8" strokeWidth={1.8} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="coherence" name="coherence" stroke="#22d3ee" strokeWidth={1.2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -515,102 +639,139 @@ function HorizonCard({ data, latest }: { data: Row[]; latest: Row }) {
   const vix = latest.vix;
   const vixVel = latest.vixVel;
 
-  const dim = open ? '' : 'opacity-50';
+  const dim = open ? "" : "opacity-50";
   const velClass = !open
-    ? 'text-gray-500'
-    : tradfiVel > 0 ? 'text-green-400' : tradfiVel < 0 ? 'text-red-400' : 'text-gray-400';
+    ? "text-muted-foreground"
+    : tradfiVel > 0
+      ? "text-success"
+      : tradfiVel < 0
+        ? "text-destructive"
+        : "text-muted-foreground";
 
   // Macro coherence: high positive = BTC tracking tech, low = decoupled
   const cohClass = !open
-    ? 'text-gray-500'
-    : macroCoh >= 0.5 ? 'text-green-400' : macroCoh >= 0 ? 'text-amber-400' : 'text-red-400';
+    ? "text-muted-foreground"
+    : macroCoh >= 0.5
+      ? "text-success"
+      : macroCoh >= 0
+        ? "text-warning"
+        : "text-destructive";
 
   // VIX velocity: spikes indicate panic
   const vixVelClass = !open
-    ? 'text-gray-500'
-    : vixVel > 0.5 ? 'text-red-400' : vixVel < -0.5 ? 'text-green-400' : 'text-gray-400';
+    ? "text-muted-foreground"
+    : vixVel > 0.5
+      ? "text-destructive"
+      : vixVel < -0.5
+        ? "text-success"
+        : "text-muted-foreground";
 
   return (
-    <div className="card p-4 border border-amber-500/20">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="label-muted text-[10px]">🌅 TradFi Velocity · Horizon Raptor</p>
-          <p className="text-[10px] text-gray-600 font-mono">
-            SPY + QQQ momentum · BTC/QQQ correlation · UVXY VIX proxy · live: Maker · TrendReversal gates
-          </p>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>TradFi velocity · Horizon Raptor</CardTitle>
+        <CardDescription>
+          SPY + QQQ momentum · BTC/QQQ correlation · UVXY VIX proxy · live: Maker · TrendReversal
+          gates
+        </CardDescription>
+        <CardAction>
+          <Badge variant={open ? "success" : "secondary"}>
+            <StatusDot tone={open ? "success" : "muted"} pulse={open} />
+            {open ? "US session open" : "Market closed"}
+          </Badge>
+        </CardAction>
+        <div className={`col-span-full grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 ${dim}`}>
+          <Stat
+            label="TradFi velocity"
+            value={
+              <span className={velClass}>
+                {open ? `${tradfiVel >= 0 ? "+" : ""}${tradfiVel.toFixed(3)}` : "—"}
+              </span>
+            }
+          />
+          <Stat
+            label="Macro Cₘ"
+            value={<span className={cohClass}>{open ? macroCoh.toFixed(2) : "—"}</span>}
+          />
+          <Stat label="VIX (UVXY)" value={open && vix > 0 ? `$${vix.toFixed(2)}` : "—"} />
+          <Stat
+            label="VIX velocity"
+            value={
+              <span className={vixVelClass}>
+                {open ? `${vixVel >= 0 ? "+" : ""}${vixVel.toFixed(3)}` : "—"}
+              </span>
+            }
+          />
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] font-mono">
-          <span className={`h-2 w-2 rounded-full ${open ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
-          <span className={open ? 'text-green-400' : 'text-gray-500'}>
-            {open ? 'US SESSION OPEN' : 'MARKET CLOSED'}
-          </span>
+      </CardHeader>
+      <CardContent>
+        <div className="h-40">
+          {data.length < 2 ? (
+            <Empty className="h-full">
+              <EmptyDescription>
+                {open
+                  ? "Collecting samples…"
+                  : "TradFi velocity resumes at the US cash open (09:30 ET)"}
+              </EmptyDescription>
+            </Empty>
+          ) : (
+            <ChartContainer
+              config={
+                {
+                  tradfiVel: { label: "TradFi velocity", color: "var(--chart-3)" },
+                  macroCoh: { label: "macro Cₘ", color: "var(--chart-2)" },
+                } satisfies ChartConfig
+              }
+              className="h-40 w-full aspect-auto"
+            >
+              <LineChart
+                data={data}
+                syncId="telemetry"
+                margin={{ top: 6, right: 12, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "monospace" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--border)" }}
+                  interval="preserveStartEnd"
+                  minTickGap={40}
+                />
+                <YAxis
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "monospace" }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => v.toFixed(2)}
+                  width={44}
+                  domain={["auto", "auto"]}
+                />
+                <Tooltip content={<ChartTooltipContent nameKey="dataKey" />} />
+                <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="4 4" />
+                <Line
+                  type="monotone"
+                  dataKey="tradfiVel"
+                  name="TradFi vel"
+                  stroke="var(--chart-3)"
+                  strokeWidth={1.8}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="macroCoh"
+                  name="macro Cₘ"
+                  stroke="var(--chart-2)"
+                  strokeWidth={1.2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ChartContainer>
+          )}
         </div>
-      </div>
-
-      <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 ${dim}`}>
-        <div className="card px-3 py-2 flex flex-col gap-0.5">
-          <span className="label-muted text-[10px]">TradFi Vel</span>
-          <span className={`font-mono text-lg ${velClass}`}>
-            {open ? `${tradfiVel >= 0 ? '+' : ''}${tradfiVel.toFixed(3)}` : '—'}
-          </span>
-        </div>
-        <div className="card px-3 py-2 flex flex-col gap-0.5">
-          <span className="label-muted text-[10px]">Macro Cₘ</span>
-          <span className={`font-mono text-lg ${cohClass}`}>
-            {open ? macroCoh.toFixed(2) : '—'}
-          </span>
-        </div>
-        <div className="card px-3 py-2 flex flex-col gap-0.5">
-          <span className="label-muted text-[10px]">VIX (UVXY)</span>
-          <span className="font-mono text-lg text-amber-400">
-            {open && vix > 0 ? `$${vix.toFixed(2)}` : '—'}
-          </span>
-        </div>
-        <div className="card px-3 py-2 flex flex-col gap-0.5">
-          <span className="label-muted text-[10px]">VIX Vel</span>
-          <span className={`font-mono text-lg ${vixVelClass}`}>
-            {open ? `${vixVel >= 0 ? '+' : ''}${vixVel.toFixed(3)}` : '—'}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-3" style={{ height: 160 }}>
-        {data.length < 2 ? (
-          <div className="h-full flex items-center justify-center text-gray-600 text-xs">
-            {open ? 'Collecting samples…' : 'TradFi velocity resumes at the US cash open (09:30 ET)'}
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} syncId="telemetry" margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e32" vertical={false} />
-              <XAxis
-                dataKey="time"
-                tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}
-                tickLine={false}
-                axisLine={{ stroke: '#1e1e32' }}
-                interval="preserveStartEnd"
-                minTickGap={40}
-              />
-              <YAxis
-                tick={{ fill: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => v.toFixed(2)}
-                width={44}
-                domain={['auto', 'auto']}
-              />
-              <Tooltip
-                contentStyle={{ background: '#0d0d1a', border: '1px solid #1e1e32', borderRadius: 8, fontSize: 11, fontFamily: 'monospace' }}
-                labelStyle={{ color: '#9ca3af' }}
-              />
-              <ReferenceLine y={0} stroke="#374151" strokeDasharray="4 4" />
-              <Line type="monotone" dataKey="tradfiVel" name="TradFi vel" stroke="#f59e0b" strokeWidth={1.8} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="macroCoh" name="macro Cₘ" stroke="#22d3ee" strokeWidth={1.2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -618,64 +779,69 @@ function HorizonCard({ data, latest }: { data: Row[]; latest: Row }) {
 
 // ── Asset-class sub-navigation ────────────────────────────────────────────────
 
-type TelemetryClass = 'crypto' | 'sports' | 'politics';
+type TelemetryClass = "crypto" | "sports" | "politics";
 
-const TELEMETRY_CLASSES: { id: TelemetryClass; label: string; icon: string; ready: boolean }[] = [
-  { id: 'crypto',   label: 'Crypto',   icon: '₿',  ready: true },
-  { id: 'sports',   label: 'Sports',   icon: '🏟️', ready: true },
-  { id: 'politics', label: 'Politics', icon: '🗳️', ready: false },
+const TELEMETRY_CLASSES: { id: TelemetryClass; label: string; ready: boolean }[] = [
+  { id: "crypto", label: "Crypto", ready: true },
+  { id: "sports", label: "Sports", ready: true },
+  { id: "politics", label: "Politics", ready: false },
 ];
 
 function ClassNav({
-  active, onChange, classes,
+  active,
+  onChange,
+  classes,
 }: {
   active: TelemetryClass;
   onChange: (c: TelemetryClass) => void;
   classes: typeof TELEMETRY_CLASSES;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
-      {classes.map(c => {
-        const isActive = c.id === active;
-        return (
-          <button
-            key={c.id}
-            disabled={!c.ready}
-            onClick={() => c.ready && onChange(c.id)}
-            title={c.ready ? undefined : 'Coming soon'}
-            className={[
-              'flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors',
-              isActive
-                ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-                : c.ready
-                  ? 'bg-[#13131f] border-[#1e1e32] text-gray-500 hover:border-gray-600 hover:text-gray-300'
-                  : 'bg-[#13131f] border-[#1e1e32] text-gray-700 cursor-not-allowed opacity-60',
-            ].join(' ')}
-          >
-            <span>{c.icon}</span>
-            <span>{c.label}</span>
-            {!c.ready && <span className="text-[9px] text-gray-600">soon</span>}
-          </button>
-        );
-      })}
-    </div>
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={active}
+      aria-label="Telemetry class"
+      onValueChange={(value) => {
+        if (value) onChange(value as TelemetryClass);
+      }}
+    >
+      {classes.map((c) => (
+        <ToggleGroupItem key={c.id} value={c.id} disabled={!c.ready}>
+          {c.label}
+          {!c.ready && <span className="text-muted-foreground"> · Coming soon</span>}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 
-export default function TelemetryPage({ availableAssets, venue }: { availableAssets: string[]; venue?: VenueId }) {
+export default function TelemetryPage({
+  availableAssets,
+  venue,
+}: {
+  availableAssets: string[];
+  venue?: VenueId;
+}) {
   // US builds run a crypto wing (Polymarket US lists crypto markets), so the
   // Crypto tab stays visible — but Sports remains the default landing tab.
   //
   // Deliberately `=== 'us'` and not "any non-intl venue": Kalshi's default
   // series (KALSHI_SERIES) are crypto contracts, so a Kalshi instance should
   // land on Crypto like an intl one does.
-  const isUs = venue === 'us';
+  const isUs = venue === "us";
   const classes = TELEMETRY_CLASSES;
   // Use raptor-specific asset list (crypto underlyings only) rather than the
   // full DB pool list which may include venue-only entries (e.g. "kalshi").
-  const { data: telemetryAssets } = useSWR('telemetry-assets', getTelemetryAssets, { refreshInterval: 30_000 });
-  const assets = telemetryAssets?.length ? telemetryAssets : (availableAssets.length ? availableAssets : ['btc']);
-  const [selectedAsset, setSelectedAsset] = useState<string>('');
+  const { data: telemetryAssets } = useSWR("telemetry-assets", getTelemetryAssets, {
+    refreshInterval: 30_000,
+  });
+  const assets = telemetryAssets?.length
+    ? telemetryAssets
+    : availableAssets.length
+      ? availableAssets
+      : ["btc"];
+  const [selectedAsset, setSelectedAsset] = useState<string>("");
   const asset = selectedAsset || assets[0];
 
   const [windowMins, setWindowMins] = useState(15);
@@ -686,21 +852,21 @@ export default function TelemetryPage({ availableAssets, venue }: { availableAss
   // with a toggle for when the operator does want to look.
   const [showClosedRaptors, setShowClosedRaptors] = useState(false);
   const [range, setRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
-  const [assetClass, setAssetClass] = useState<TelemetryClass>(isUs ? 'sports' : 'crypto');
+  const [assetClass, setAssetClass] = useState<TelemetryClass>(isUs ? "sports" : "crypto");
   // setupStatus loads async — if the venue resolves to US after mount, move the
   // initial crypto default over to the US landing tab (Sports) once.
   const [usDefaultApplied, setUsDefaultApplied] = useState(false);
   useEffect(() => {
     if (isUs && !usDefaultApplied) {
       setUsDefaultApplied(true);
-      if (assetClass === 'crypto') setAssetClass('sports');
+      if (assetClass === "crypto") setAssetClass("sports");
     }
   }, [isUs, usDefaultApplied, assetClass]);
 
   const limit = windowMins * SAMPLES_PER_MIN;
 
   const { data: samples, error } = useSWR(
-    ['telemetry-history', asset, limit],
+    ["telemetry-history", asset, limit],
     () => getTelemetryHistory(asset, limit),
     { refreshInterval: live ? POLL_MS : 0, revalidateOnFocus: false, keepPreviousData: true },
   );
@@ -710,13 +876,12 @@ export default function TelemetryPage({ availableAssets, venue }: { availableAss
   // de-duplicated server-side (one point per change/heartbeat), so a modest fixed
   // request spans many days of readable movement regardless of the crypto window.
   const { data: sportsSamples } = useSWR(
-    ['telemetry-history', 'sports', 288],
-    () => getTelemetryHistory('sports', 288),
+    ["telemetry-history", "sports", 288],
+    () => getTelemetryHistory("sports", 288),
     { refreshInterval: live ? POLL_MS : 0, revalidateOnFocus: false, keepPreviousData: true },
   );
-  const sportsLast = sportsSamples && sportsSamples.length > 0
-    ? sportsSamples[sportsSamples.length - 1]
-    : undefined;
+  const sportsLast =
+    sportsSamples && sportsSamples.length > 0 ? sportsSamples[sportsSamples.length - 1] : undefined;
   const sportsRows = useMemo<SportsRow[]>(
     () => (sportsSamples ?? []).map(toSportsRow),
     [sportsSamples],
@@ -725,13 +890,12 @@ export default function TelemetryPage({ availableAssets, venue }: { availableAss
   // The Tennis Raptor publishes under its own fixed "tennis" health key, on the
   // same slow cadence as Sports, so it is fetched as a sibling series here.
   const { data: tennisSamples } = useSWR(
-    ['telemetry-history', 'tennis', 288],
-    () => getTelemetryHistory('tennis', 288),
+    ["telemetry-history", "tennis", 288],
+    () => getTelemetryHistory("tennis", 288),
     { refreshInterval: live ? POLL_MS : 0, revalidateOnFocus: false, keepPreviousData: true },
   );
-  const tennisLast = tennisSamples && tennisSamples.length > 0
-    ? tennisSamples[tennisSamples.length - 1]
-    : undefined;
+  const tennisLast =
+    tennisSamples && tennisSamples.length > 0 ? tennisSamples[tennisSamples.length - 1] : undefined;
   const tennisRows = useMemo<TennisRow[]>(
     () => (tennisSamples ?? []).map(toTennisRow),
     [tennisSamples],
@@ -739,8 +903,8 @@ export default function TelemetryPage({ availableAssets, venue }: { availableAss
   // The feed labels the tracked match "A vs B"; split it so the chart legends
   // carry the actual players rather than an anonymous "p1"/"p2".
   const [tennisP1, tennisP2] = useMemo(() => {
-    const parts = (tennisLast?.tennis_match ?? '').split(' vs ');
-    return [parts[0]?.trim() || 'player 1', parts[1]?.trim() || 'player 2'];
+    const parts = (tennisLast?.tennis_match ?? "").split(" vs ");
+    return [parts[0]?.trim() || "player 1", parts[1]?.trim() || "player 2"];
   }, [tennisLast?.tennis_match]);
 
   const rows = useMemo<Row[]>(() => (samples ?? []).map(toRow), [samples]);
@@ -771,464 +935,590 @@ export default function TelemetryPage({ availableAssets, venue }: { availableAss
     <div className="space-y-5">
       {/* Asset-class sub-navigation */}
       <div className="flex items-center gap-3 flex-wrap">
-        <p className="label-muted text-xs">📡 Telemetry</p>
+        <SectionHeader title="Telemetry" />
         <ClassNav active={assetClass} onChange={setAssetClass} classes={classes} />
       </div>
 
-      {assetClass === 'crypto' && (
-      <div className="space-y-5">
-      {/* Header / intro + controls */}
-      <div className="card px-5 py-4 border border-indigo-500/20 bg-[#0d0d1a]">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <p className="label-muted text-xs">📡 Raptor Signal Telemetry</p>
-            <p className="text-sm text-gray-400 mt-0.5">
-              Live signal collectors -- watch the data streams to understand what your vipers see —
-              <span className="text-gray-500"> from spot micro-structure up to perp macro pressure.</span>
-            </p>
-          </div>
-          <AssetSelector assets={assets} selected={asset} onChange={setSelectedAsset} />
-        </div>
+      {assetClass === "crypto" && (
+        <div className="space-y-5">
+          {/* Header / intro + controls */}
+          <Card size="sm" className="px-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-medium">Raptor signal telemetry</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Live signal collectors -- watch the data streams to understand what your vipers
+                  see —
+                  <span className="text-muted-foreground">
+                    {" "}
+                    from spot micro-structure up to perp macro pressure.
+                  </span>
+                </p>
+              </div>
+              <AssetSelector assets={assets} selected={asset} onChange={setSelectedAsset} />
+            </div>
 
-        <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-[#1e1e32]">
-          <ConnPill label="Price Raptor" live={lastSample ? !!lastSample.price_connected : undefined} />
-          <ConnPill label="Funding Raptor" live={lastSample ? !!lastSample.funding_connected : undefined} />
-          <ConnPill label="Derivatives Raptor" live={lastSample ? !!lastSample.deriv_connected : undefined} />
-          {asset === 'btc' && (
-            <ConnPill label="Tide Raptor" live={lastSample ? !!lastSample.tide_connected : undefined} />
+            <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-border">
+              <ConnPill
+                label="Price Raptor"
+                live={lastSample ? !!lastSample.price_connected : undefined}
+              />
+              <ConnPill
+                label="Funding Raptor"
+                live={lastSample ? !!lastSample.funding_connected : undefined}
+              />
+              <ConnPill
+                label="Derivatives Raptor"
+                live={lastSample ? !!lastSample.deriv_connected : undefined}
+              />
+              {asset === "btc" && (
+                <ConnPill
+                  label="Tide Raptor"
+                  live={lastSample ? !!lastSample.tide_connected : undefined}
+                />
+              )}
+              {asset === "btc" && (
+                <ConnPill
+                  label="Horizon Raptor"
+                  live={lastSample ? !!lastSample.horizon_connected : undefined}
+                />
+              )}
+
+              {/* Window selector */}
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                value={String(windowMins)}
+                aria-label="History window"
+                onValueChange={(value) => {
+                  if (value) setWindowMins(Number(value));
+                }}
+              >
+                {WINDOWS.map((w) => (
+                  <ToggleGroupItem key={w.mins} value={String(w.mins)}>
+                    {w.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+
+              {/* Live / Pause toggle */}
+              <div className="flex items-center gap-2">
+                <Switch id="telemetry-live" checked={live} onCheckedChange={setLive} />
+                <Label htmlFor="telemetry-live">
+                  <StatusDot tone={live ? "success" : "warning"} pulse={live} />
+                  {live ? "Live" : "Paused"}
+                </Label>
+              </div>
+
+              <span className="text-xs text-muted-foreground tabular-nums ml-auto">
+                {rows.length} samples · {spanSecs}s loaded · {POLL_MS / 1000}s cadence
+              </span>
+            </div>
+          </Card>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                Failed to reach /api/telemetry/history — is the engine running?
+              </AlertDescription>
+            </Alert>
           )}
-          {asset === 'btc' && (
-            <ConnPill label="Horizon Raptor" live={lastSample ? !!lastSample.horizon_connected : undefined} />
+
+          {!samples && !error && (
+            <Card size="sm" className="px-4" aria-busy>
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-50 w-full" />
+            </Card>
           )}
 
-          {/* Window selector */}
-          <div className="flex items-center gap-1 ml-2">
-            {WINDOWS.map(w => {
-              const active = w.mins === windowMins;
-              return (
-                <button
-                  key={w.mins}
-                  onClick={() => setWindowMins(w.mins)}
-                  className={[
-                    'text-[11px] font-mono px-2.5 py-1 rounded border transition-colors',
-                    active
-                      ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-                      : 'bg-[#13131f] border-[#1e1e32] text-gray-500 hover:border-gray-600 hover:text-gray-300',
-                  ].join(' ')}
-                >
-                  {w.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Live / Pause toggle */}
-          <button
-            onClick={() => setLive(v => !v)}
-            className={[
-              'flex items-center gap-1.5 text-[11px] font-mono px-3 py-1 rounded-lg border transition-colors',
-              live
-                ? 'bg-green-500/10 border-green-500/30 text-green-300 hover:bg-green-500/20'
-                : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20',
-            ].join(' ')}
-          >
-            <span className={`h-2 w-2 rounded-full ${live ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
-            <span>{live ? 'LIVE' : 'PAUSED'}</span>
-          </button>
-
-          <span className="text-[10px] text-gray-600 font-mono ml-auto">
-            {rows.length} samples · {spanSecs}s loaded · {POLL_MS / 1000}s cadence
-          </span>
-        </div>
-      </div>
-
-      {error && (
-        <div className="card px-4 py-3 border border-red-500/30 bg-red-500/5 text-red-300 text-xs font-mono">
-          Failed to reach /api/telemetry/history — is the engine running?
-        </div>
-      )}
-
-      {/* Current-value stat strip */}
-      {latest && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* A disconnected feed's last fields are zeros, not readings: dash them
+          {/* Current-value stat strip */}
+          {latest && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* A disconnected feed's last fields are zeros, not readings: dash them
               rather than print "$0.00" or "+0.0000%" as live values ([B43]). */}
-          {(() => {
-            const priceUp   = !!lastSample?.price_connected;
-            const fundingUp = !!lastSample?.funding_connected;
-            const derivUp   = !!lastSample?.deriv_connected;
-            const off = 'text-gray-500';
-            return (
-              <>
-                <StatCard label="Oracle Price" value={priceUp ? `$${latest.oracle.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'} valueClass={priceUp ? '' : off} />
-                <StatCard label="Velocity (5s)" value={priceUp ? fmtSigned(latest.v5) : '—'} valueClass={!priceUp ? off : latest.v5 >= 0 ? 'text-green-400' : 'text-red-400'} />
-                <StatCard label="Drift (10m)" value={priceUp ? fmtSigned(latest.d10) : '—'} valueClass={!priceUp ? off : latest.d10 >= 0 ? 'text-green-400' : 'text-red-400'} />
-                <StatCard label="Funding Rate" value={fundingUp ? `${latest.funding >= 0 ? '+' : ''}${latest.funding.toFixed(4)}%` : '—'} valueClass={!fundingUp ? off : latest.funding >= 0 ? 'text-green-400' : 'text-red-400'} />
-                <StatCard label="Open Interest Δ" value={derivUp ? `${latest.oiDelta >= 0 ? '+' : ''}${latest.oiDelta.toFixed(3)}%` : '—'} valueClass={!derivUp ? off : latest.oiDelta >= 0 ? 'text-green-400' : 'text-red-400'} />
-              </>
-            );
-          })()}
-          <StatCard
-            label="Taker CVD"
-            value={latest.cvd > 0 ? latest.cvd.toFixed(3) : '—'}
-            valueClass={latest.cvd === 0 ? 'text-gray-500' : latest.cvd >= 1 ? 'text-green-400' : 'text-red-400'}
-          />
-        </div>
-      )}
+              {(() => {
+                const priceUp = !!lastSample?.price_connected;
+                const fundingUp = !!lastSample?.funding_connected;
+                const derivUp = !!lastSample?.deriv_connected;
+                const off = "text-muted-foreground";
+                return (
+                  <>
+                    <StatCard
+                      label="Oracle price"
+                      value={
+                        priceUp
+                          ? `$${latest.oracle.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : "—"
+                      }
+                      valueClass={priceUp ? "" : off}
+                    />
+                    <StatCard
+                      label="Velocity (5s)"
+                      value={priceUp ? fmtSigned(latest.v5) : "—"}
+                      valueClass={!priceUp ? off : TONE_TEXT[signTone(latest.v5)]}
+                    />
+                    <StatCard
+                      label="Drift (10m)"
+                      value={priceUp ? fmtSigned(latest.d10) : "—"}
+                      valueClass={!priceUp ? off : TONE_TEXT[signTone(latest.d10)]}
+                    />
+                    <StatCard
+                      label="Funding rate"
+                      value={
+                        fundingUp
+                          ? `${latest.funding >= 0 ? "+" : ""}${latest.funding.toFixed(4)}%`
+                          : "—"
+                      }
+                      valueClass={!fundingUp ? off : TONE_TEXT[signTone(latest.funding)]}
+                    />
+                    <StatCard
+                      label="Open interest Δ"
+                      value={
+                        derivUp
+                          ? `${latest.oiDelta >= 0 ? "+" : ""}${latest.oiDelta.toFixed(3)}%`
+                          : "—"
+                      }
+                      valueClass={!derivUp ? off : TONE_TEXT[signTone(latest.oiDelta)]}
+                    />
+                  </>
+                );
+              })()}
+              <StatCard
+                label="Taker CVD"
+                value={latest.cvd > 0 ? latest.cvd.toFixed(3) : "—"}
+                valueClass={
+                  latest.cvd === 0
+                    ? "text-muted-foreground"
+                    : latest.cvd >= 1
+                      ? "text-success"
+                      : "text-destructive"
+                }
+              />
+            </div>
+          )}
 
-      {/* Scrubber — only when paused */}
-      {!live && range && rows.length > 1 && (
-        <Scrubber data={rows} range={range} onChange={setRange} />
-      )}
+          {/* Scrubber — only when paused */}
+          {!live && range && rows.length > 1 && (
+            <Scrubber data={rows} range={range} onChange={setRange} />
+          )}
 
-      {/* Tide and Horizon are BTC-only and both follow the US cash session.
+          {/* Tide and Horizon are BTC-only and both follow the US cash session.
           Out of hours they collapse into a single line rather than two idle
           cards, which is the difference between a page that says "closed" and a
           page that looks broken. */}
-      {asset === 'btc' && latest && !latest.tideOpen && !latest.horizonOpen && !showClosedRaptors && (
-        <div className="card p-3 border border-indigo-500/20 flex items-center justify-between gap-3">
-          <div>
-            <p className="label-muted text-[10px]">🌊 Tide Raptor · 🌅 Horizon Raptor</p>
-            <p className="text-[10px] text-gray-600 font-mono">
-              US cash session closed — ETF premiums are stale and both signals are held at zero until the open.
-            </p>
+          {asset === "btc" &&
+            latest &&
+            !latest.tideOpen &&
+            !latest.horizonOpen &&
+            !showClosedRaptors && (
+              <Alert>
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-foreground">Tide Raptor · Horizon Raptor</p>
+                    <p>
+                      US cash session closed — ETF premiums are stale and both signals are held at
+                      zero until the open.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => setShowClosedRaptors(true)}>
+                    Show anyway
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
+          {/* Institutional Pulse — Tide Raptor (BTC-only, consumed by Convergence/GBoost/Basis) */}
+          {asset === "btc" && latest && (latest.tideOpen || showClosedRaptors) && (
+            <TideCard data={viewRows} latest={latest} />
+          )}
+
+          {/* TradFi Velocity — Horizon Raptor (BTC-only, consumed by Maker/TrendReversal gates) */}
+          {asset === "btc" && latest && (latest.horizonOpen || showClosedRaptors) && (
+            <HorizonCard data={viewRows} latest={latest} />
+          )}
+
+          {/* Once revealed, let the operator put them away again without waiting for
+          the close. Only offered while the session is actually shut. */}
+          {asset === "btc" &&
+            latest &&
+            !latest.tideOpen &&
+            !latest.horizonOpen &&
+            showClosedRaptors && (
+              <Button variant="outline" onClick={() => setShowClosedRaptors(false)}>
+                Hide closed-session raptors
+              </Button>
+            )}
+
+          {/* Signal charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <SignalChart
+              title="Oracle price"
+              subtitle="Binance Spot WS — current mark"
+              data={viewRows}
+              connected={lastSample ? !!lastSample.price_connected : undefined}
+              series={[{ key: "oracle", label: "price", color: "var(--chart-1)" }]}
+              fmtY={(v) => `$${Math.round(v).toLocaleString("en-US")}`}
+            />
+            <SignalChart
+              title="Velocity & acceleration"
+              subtitle="Δprice over 5s / 1s windows + accel"
+              data={viewRows}
+              connected={lastSample ? !!lastSample.price_connected : undefined}
+              zeroLine
+              series={[
+                { key: "v5", label: "5s", color: "var(--chart-1)" },
+                { key: "v1", label: "1s", color: "var(--chart-2)" },
+                { key: "accel", label: "accel", color: "var(--chart-3)" },
+              ]}
+              fmtY={(v) => fmtSigned(v)}
+            />
+            <SignalChart
+              title="Drift"
+              subtitle="Δprice over 60m / 10m — medium-term trend"
+              data={viewRows}
+              connected={lastSample ? !!lastSample.price_connected : undefined}
+              zeroLine
+              series={[
+                { key: "d60", label: "60m", color: "var(--chart-4)" },
+                { key: "d10", label: "10m", color: "var(--chart-5)" },
+              ]}
+              fmtY={(v) => fmtSigned(v)}
+            />
+            <SignalChart
+              title="Funding rate"
+              subtitle="Binance perpetual — smart-money lean"
+              data={viewRows}
+              connected={lastSample ? !!lastSample.funding_connected : undefined}
+              zeroLine
+              series={[{ key: "funding", label: "rate", color: "var(--chart-2)" }]}
+              fmtY={(v) => `${v.toFixed(4)}%`}
+            />
+            <SignalChart
+              title="Open interest Δ"
+              subtitle="Binance perp OI change — 10m regime pressure"
+              data={viewRows}
+              connected={lastSample ? !!lastSample.deriv_connected : undefined}
+              zeroLine
+              series={[{ key: "oiDelta", label: "ΔOI", color: "var(--chart-3)" }]}
+              fmtY={(v) => `${v >= 0 ? "+" : ""}${v.toFixed(3)}%`}
+            />
+            <SignalChart
+              title="Taker CVD ratio"
+              subtitle="Perp buy÷sell aggression — >1 buyers lifting, <1 sellers hitting"
+              data={viewRows}
+              connected={lastSample ? !!lastSample.deriv_connected : undefined}
+              refY={1}
+              refLabel="balanced"
+              series={[{ key: "cvd", label: "ratio", color: "var(--chart-4)" }]}
+              fmtY={(v) => v.toFixed(3)}
+            />
           </div>
-          <button
-            onClick={() => setShowClosedRaptors(true)}
-            className="shrink-0 text-[11px] font-mono px-3 py-1 rounded-lg border bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 transition-colors"
-          >
-            Show anyway
-          </button>
+
+          {/* Footer note */}
+          <p className="text-xs text-muted-foreground">
+            History is served from the engine ring buffer (
+            <span className="text-muted-foreground">/api/telemetry/history</span>), so it survives
+            page reloads. Pick a window, then <span className="text-muted-foreground">Pause</span>{" "}
+            to scrub a past interval. Positive velocity/drift = price rising; funding &gt; 0 = longs
+            paying shorts (bullish lean). The macro Derivatives Raptor adds perp context: rising{" "}
+            <span className="text-muted-foreground">Open Interest Δ</span> with price = fresh
+            positioning, while <span className="text-muted-foreground">Taker CVD</span> &gt; 1 marks
+            buy-side aggression — your vipers fuse these slow macro reads with the fast spot micro
+            signals.
+          </p>
         </div>
       )}
 
-      {/* Institutional Pulse — Tide Raptor (BTC-only, consumed by Convergence/GBoost/Basis) */}
-      {asset === 'btc' && latest && (latest.tideOpen || showClosedRaptors) && (
-        <TideCard data={viewRows} latest={latest} />
-      )}
-
-      {/* TradFi Velocity — Horizon Raptor (BTC-only, consumed by Maker/TrendReversal gates) */}
-      {asset === 'btc' && latest && (latest.horizonOpen || showClosedRaptors) && (
-        <HorizonCard data={viewRows} latest={latest} />
-      )}
-
-      {/* Once revealed, let the operator put them away again without waiting for
-          the close. Only offered while the session is actually shut. */}
-      {asset === 'btc' && latest && !latest.tideOpen && !latest.horizonOpen && showClosedRaptors && (
-        <button
-          onClick={() => setShowClosedRaptors(false)}
-          className="self-start text-[11px] font-mono px-3 py-1 rounded-lg border bg-gray-500/10 border-gray-500/30 text-gray-400 hover:bg-gray-500/20 transition-colors"
-        >
-          Hide closed-session raptors
-        </button>
-      )}
-
-      {/* Signal charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <SignalChart
-          title="Oracle Price"
-          subtitle="Binance Spot WS — current mark"
-          data={viewRows}
-          series={[{ key: 'oracle', label: 'price', color: '#10b981' }]}
-          fmtY={v => `$${Math.round(v).toLocaleString('en-US')}`}
-        />
-        <SignalChart
-          title="Velocity & Acceleration"
-          subtitle="Δprice over 5s / 1s windows + accel"
-          data={viewRows}
-          zeroLine
-          series={[
-            { key: 'v5', label: '5s', color: '#6366f1' },
-            { key: 'v1', label: '1s', color: '#22d3ee' },
-            { key: 'accel', label: 'accel', color: '#f59e0b' },
-          ]}
-          fmtY={v => fmtSigned(v)}
-        />
-        <SignalChart
-          title="Drift"
-          subtitle="Δprice over 60m / 10m — medium-term trend"
-          data={viewRows}
-          zeroLine
-          series={[
-            { key: 'd60', label: '60m', color: '#a855f7' },
-            { key: 'd10', label: '10m', color: '#ec4899' },
-          ]}
-          fmtY={v => fmtSigned(v)}
-        />
-        <SignalChart
-          title="Funding Rate"
-          subtitle="Binance perpetual — smart-money lean"
-          data={viewRows}
-          zeroLine
-          series={[{ key: 'funding', label: 'rate', color: '#14b8a6' }]}
-          fmtY={v => `${v.toFixed(4)}%`}
-        />
-        <SignalChart
-          title="Open Interest Δ"
-          subtitle="Binance perp OI change — 10m regime pressure"
-          data={viewRows}
-          zeroLine
-          series={[{ key: 'oiDelta', label: 'ΔOI', color: '#f97316' }]}
-          fmtY={v => `${v >= 0 ? '+' : ''}${v.toFixed(3)}%`}
-        />
-        <SignalChart
-          title="Taker CVD Ratio"
-          subtitle="Perp buy÷sell aggression — >1 buyers lifting, <1 sellers hitting"
-          data={viewRows}
-          refY={1}
-          refLabel="balanced"
-          series={[{ key: 'cvd', label: 'ratio', color: '#eab308' }]}
-          fmtY={v => v.toFixed(3)}
-        />
-      </div>
-
-      {/* Footer note */}
-      <p className="text-[10px] font-mono text-gray-600">
-        History is served from the engine ring buffer (<span className="text-gray-500">/api/telemetry/history</span>),
-        so it survives page reloads. Pick a window, then <span className="text-gray-500">Pause</span> to scrub a past
-        interval. Positive velocity/drift = price rising; funding &gt; 0 = longs paying shorts (bullish lean).
-        The macro Derivatives Raptor adds perp context: rising <span className="text-gray-500">Open Interest Δ</span>
-        {' '}with price = fresh positioning, while <span className="text-gray-500">Taker CVD</span> &gt; 1 marks buy-side
-        aggression — your vipers fuse these slow macro reads with the fast spot micro signals.
-      </p>
-      </div>
-      )}
-
-      {assetClass === 'sports' && (
-      <div className="space-y-5">
-        <div className="card px-5 py-4 border border-emerald-500/20 bg-[#0d0d1a]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div>
-              <p className="label-muted text-xs">🏟️ Sports Raptor — Cross-Book Consensus Board</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">
+      {assetClass === "sports" && (
+        <div className="space-y-5">
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>Sports Raptor — Cross-book consensus board</CardTitle>
+              <CardDescription>
                 Recording feed (The Odds API) against Polymarket International. Every matched
                 moneyline is kept as a line keyed to its own outcome token, so a squadron reads its
                 own game. The reading below is the next game to start.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 text-[10px] font-mono shrink-0">
-              <ConnPill label="Sports Raptor" live={sportsLast ? !!sportsLast.sports_connected : undefined} />
-              <span className="text-gray-500">
-                books <span className="text-gray-300">{num(sportsLast?.sports_num_books).toFixed(0)}</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Which event / outcome / books the numbers describe */}
-          {!sportsLast?.sports_connected && sportsLast && !sportsLast.sports_enabled ? (
-            <p className="text-[11px] font-mono text-gray-500">
-              Switched off. Turn on <span className="text-gray-400">Sports Line Ledger</span> under
-              Setup → Engine to start recording.
-            </p>
-          ) : !sportsLast?.sports_connected && sportsLast && !sportsLast.sports_has_key ? (
-            <p className="text-[11px] font-mono text-gray-500">
-              No <span className="text-gray-400">ODDS_API_KEY</span> set — the feed is on but has
-              nothing to read.
-            </p>
-          ) : null}
-          {sportsLast?.sports_connected && sportsLast?.sports_event ? (
-            <div className="mb-4 rounded-lg border border-[#1e1e32] bg-[#0a0a14] px-4 py-3">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                {sportsLast.sports_sport && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                    {sportsLast.sports_sport}
-                  </span>
-                )}
-                <span className="text-sm text-gray-200 font-medium">{sportsLast.sports_event}</span>
-                {sportsLast.sports_commence && (
-                  <span className="text-[11px] font-mono text-gray-500">
-                    · {fmtKickoff(sportsLast.sports_commence)}
-                  </span>
-                )}
+              </CardDescription>
+              <CardAction>
+                <ConnPill
+                  label="Sports Raptor"
+                  live={sportsLast ? !!sportsLast.sports_connected : undefined}
+                />
+              </CardAction>
+              <div className="col-span-full pt-2">
+                <Stat label="Books" value={num(sportsLast?.sports_num_books).toFixed(0)} />
               </div>
-              <p className="text-[11px] text-gray-500 mt-1.5">
-                Consensus is the vig-free implied probability that{' '}
-                <span className="text-emerald-300 font-mono">
-                  {sportsLast.sports_reference || 'the reference outcome'}
-                </span>{' '}
-                wins — currently{' '}
-                <span className="text-gray-200 font-mono">
-                  {(num(sportsLast.sports_consensus_prob) * 100).toFixed(1)}%
-                </span>.
-              </p>
-              {sportsLast.sports_books && (
-                <p className="text-[10px] font-mono text-gray-600 mt-1">
-                  <span className="text-gray-500">{num(sportsLast.sports_num_books).toFixed(0)} books:</span>{' '}
-                  {sportsLast.sports_books}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="mb-4 rounded-lg border border-[#1e1e32] bg-[#0a0a14] px-4 py-3 text-[11px] font-mono text-gray-600">
-              No matched game on the board yet — the raptor snapshots each game at fixed offsets before kick-off, so a line appears as its game approaches.</div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <SignalChart<SportsRow>
-              title="Consensus Probability"
-              subtitle="Vig-free implied prob of reference outcome (0–1)"
-              data={sportsRows}
-              series={[{ key: 'consensus', label: 'consensus', color: '#34d399' }]}
-              fmtY={v => v.toFixed(3)}
-            />
-            <SignalChart<SportsRow>
-              title="Line Drift & Book Dispersion"
-              subtitle="Δconsensus vs that game's prior snapshot (signed) + cross-book spread"
-              data={sportsRows}
-              zeroLine
-              series={[
-                { key: 'drift', label: 'drift', color: '#f59e0b' },
-                { key: 'dispersion', label: 'dispersion', color: '#38bdf8' },
-              ]}
-              fmtY={v => fmtSigned(v)}
-            />
-          </div>
-        </div>
-
-        <p className="text-[10px] font-mono text-gray-600">
-          The Sports Raptor records only — no Viper trades on it yet. It snapshots each matched
-          game at fixed offsets before kick-off and budgets spend against the key's own quota, so it
-          runs on the free tier (~500 requests/month) as well as a paid plan.{' '}
-          <span className="text-gray-500">Consensus</span> is the vig-free cross-book implied
-          probability of the outcome shown; <span className="text-gray-500">drift</span> is its move
-          since that game's previous snapshot; <span className="text-gray-500">dispersion</span> is
-          how much the books disagree — a proxy for soft, potentially mispriced lines.
-        </p>
-
-        {/* ── Tennis Raptor — live event state ────────────────────────────── */}
-        <div className="card px-5 py-4 border border-sky-500/20 bg-[#0d0d1a]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div>
-              <p className="label-muted text-xs">🎾 Tennis Raptor — Live Event State</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Venue-neutral observe-only feed (Live Tennis API). One tracked live match —
-                sets, games, serving side and a derived break-point flag.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 text-[10px] font-mono shrink-0">
-              <ConnPill label="Tennis Raptor" live={tennisLast ? !!tennisLast.tennis_connected : undefined} />
-              <span className="text-gray-500">
-                live <span className="text-gray-300">{num(tennisLast?.tennis_num_live).toFixed(0)}</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Live scoreboard for the tracked match */}
-          {tennisLast?.tennis_connected && tennisLast?.tennis_match ? (
-            <div className="mb-4 rounded-lg border border-[#1e1e32] bg-[#0a0a14] px-4 py-3">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                {tennisLast.tennis_tour && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25 uppercase">
-                    {tennisLast.tennis_tour}
-                  </span>
-                )}
-                <span className="text-sm text-gray-200 font-medium">{tennisLast.tennis_match}</span>
-                {tennisLast.tennis_tournament && (
-                  <span className="text-[11px] font-mono text-gray-500">
-                    · {tennisLast.tennis_tournament}
-                  </span>
-                )}
-                {tennisLast.tennis_is_tiebreak && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">
-                    TIEBREAK
-                  </span>
-                )}
-                {tennisLast.tennis_break_point && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/25">
-                    BREAK POINT
-                  </span>
-                )}
-              </div>
-
-              {/* Score grid — one row per player, color-keyed to the charts.
-                  The serving side carries a ● marker, so "who is serving" is
-                  never conveyed by color alone. */}
-              <div className="mt-2.5 grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-1 text-[11px] font-mono max-w-md">
-                <span className="text-gray-600" />
-                <span className="text-gray-600 text-right">sets</span>
-                <span className="text-gray-600 text-right">games</span>
-                <span className="text-gray-600 text-right">pts</span>
-
-                {([
-                  [tennisP1, P1_COLOR, 1, num(tennisLast.tennis_sets_p1), num(tennisLast.tennis_games_p1), 0],
-                  [tennisP2, P2_COLOR, 2, num(tennisLast.tennis_sets_p2), num(tennisLast.tennis_games_p2), 1],
-                ] as const).map(([name, color, side, sets, games, ptIdx]) => (
-                  <Fragment key={side}>
-                    <span className="flex items-center gap-1.5 text-gray-300 truncate">
-                      <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: color }} />
-                      {name}
-                      {num(tennisLast.tennis_server) === side && (
-                        <span className="text-emerald-400" title="serving">●</span>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Which event / outcome / books the numbers describe */}
+              {!sportsLast?.sports_connected && sportsLast && !sportsLast.sports_enabled ? (
+                <Alert>
+                  <AlertDescription>
+                    Switched off. Turn on{" "}
+                    <span className="text-muted-foreground">Sports Line Ledger</span> under Setup →
+                    Engine to start recording.
+                  </AlertDescription>
+                </Alert>
+              ) : !sportsLast?.sports_connected && sportsLast && !sportsLast.sports_has_key ? (
+                <Alert variant="warning">
+                  <AlertDescription>
+                    No <span className="text-muted-foreground">ODDS_API_KEY</span> set — the feed is
+                    on but has nothing to read.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {sportsLast?.sports_connected && sportsLast?.sports_event ? (
+                <ItemGroup>
+                  <Item variant="muted">
+                    <ItemContent>
+                      <ItemTitle className="flex-wrap">
+                        {sportsLast.sports_sport && (
+                          <Badge variant="secondary">{sportsLast.sports_sport}</Badge>
+                        )}
+                        <span className="text-sm text-foreground font-medium">
+                          {sportsLast.sports_event}
+                        </span>
+                        {sportsLast.sports_commence && (
+                          <span className="text-xs text-muted-foreground">
+                            · {fmtKickoff(sportsLast.sports_commence)}
+                          </span>
+                        )}
+                      </ItemTitle>
+                      <ItemDescription className="line-clamp-none">
+                        Consensus is the vig-free implied probability that{" "}
+                        <span className="font-medium text-foreground">
+                          {sportsLast.sports_reference || "the reference outcome"}
+                        </span>{" "}
+                        wins — currently{" "}
+                        <span className="text-foreground font-mono tabular-nums">
+                          {(num(sportsLast.sports_consensus_prob) * 100).toFixed(1)}%
+                        </span>
+                        .
+                      </ItemDescription>
+                      {sportsLast.sports_books && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          <span className="text-muted-foreground tabular-nums">
+                            {num(sportsLast.sports_num_books).toFixed(0)} books:
+                          </span>{" "}
+                          {sportsLast.sports_books}
+                        </p>
                       )}
-                    </span>
-                    <span className="text-gray-200 text-right">{sets.toFixed(0)}</span>
-                    <span className="text-gray-200 text-right">{games.toFixed(0)}</span>
-                    <span className="text-gray-200 text-right">
-                      {(tennisLast.tennis_points ?? '').split('–')[ptIdx] || '–'}
-                    </span>
-                  </Fragment>
-                ))}
+                    </ItemContent>
+                  </Item>
+                </ItemGroup>
+              ) : !sportsSamples ? (
+                <Skeleton className="h-24 w-full" aria-label="Loading sports board" />
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>No matched game on the board yet</EmptyTitle>
+                    <EmptyDescription>
+                      The raptor snapshots each game at fixed offsets before kick-off, so a line
+                      appears as its game approaches.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <SignalChart<SportsRow>
+                  title="Consensus probability"
+                  subtitle="Vig-free implied prob of reference outcome (0–1)"
+                  data={sportsRows}
+                  connected={sportsLast ? !!sportsLast.sports_connected : undefined}
+                  series={[{ key: "consensus", label: "consensus", color: "var(--chart-1)" }]}
+                  fmtY={(v) => v.toFixed(3)}
+                />
+                <SignalChart<SportsRow>
+                  title="Line drift & book dispersion"
+                  subtitle="Δconsensus vs that game's prior snapshot (signed) + cross-book spread"
+                  data={sportsRows}
+                  connected={sportsLast ? !!sportsLast.sports_connected : undefined}
+                  zeroLine
+                  series={[
+                    { key: "drift", label: "drift", color: "var(--chart-3)" },
+                    { key: "dispersion", label: "dispersion", color: "var(--chart-2)" },
+                  ]}
+                  fmtY={(v) => fmtSigned(v)}
+                />
               </div>
-            </div>
-          ) : (
-            <div className="mb-4 rounded-lg border border-[#1e1e32] bg-[#0a0a14] px-4 py-3 text-[11px] font-mono text-gray-600">
-              {num(tennisLast?.tennis_num_live) > 0
-                ? 'Live matches on court, but no score has been published yet.'
-                : 'Nothing on court — tennis has quiet hours daily, which is a healthy state, not a fault. Set LIVETENNIS_API_KEY in Setup if the pill stays offline.'}
-            </div>
-          )}
+            </CardContent>
+          </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <SignalChart<TennisRow>
-              title="Games — Current Set"
-              subtitle="Games won in the set in progress"
-              data={tennisRows}
-              lineType="stepAfter"
-              series={[
-                { key: 'gamesP1', label: tennisP1, color: P1_COLOR },
-                { key: 'gamesP2', label: tennisP2, color: P2_COLOR },
-              ]}
-              fmtY={v => v.toFixed(0)}
-            />
-            <SignalChart<TennisRow>
-              title="Sets Won"
-              subtitle="Match score in sets"
-              data={tennisRows}
-              lineType="stepAfter"
-              series={[
-                { key: 'setsP1', label: tennisP1, color: P1_COLOR },
-                { key: 'setsP2', label: tennisP2, color: P2_COLOR },
-              ]}
-              fmtY={v => v.toFixed(0)}
-            />
-            <div className="lg:col-span-2">
-              <SignalChart<TennisRow>
-                title="Feed Age"
-                subtitle="Seconds since the tracked score last moved"
-                data={tennisRows}
-                refY={TENNIS_STALENESS_SECS}
-                refLabel={`stale > ${TENNIS_STALENESS_SECS}s`}
-                series={[{ key: 'feedAge', label: 'feed age', color: '#9ca3af' }]}
-                fmtY={v => `${v.toFixed(0)}s`}
-              />
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            The Sports Raptor records only — no Viper trades on it yet. It snapshots each matched
+            game at fixed offsets before kick-off and budgets spend against the key's own quota, so
+            it runs on the free tier (~500 requests/month) as well as a paid plan.{" "}
+            <span className="text-muted-foreground">Consensus</span> is the vig-free cross-book
+            implied probability of the outcome shown;{" "}
+            <span className="text-muted-foreground">drift</span> is its move since that game's
+            previous snapshot; <span className="text-muted-foreground">dispersion</span> is how much
+            the books disagree — a proxy for soft, potentially mispriced lines.
+          </p>
+
+          {/* ── Tennis Raptor — live event state ────────────────────────────── */}
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>Tennis Raptor — Live event state</CardTitle>
+              <CardDescription>
+                Venue-neutral observe-only feed (Live Tennis API). One tracked live match — sets,
+                games, serving side and a derived break-point flag.
+              </CardDescription>
+              <CardAction>
+                <ConnPill
+                  label="Tennis Raptor"
+                  live={tennisLast ? !!tennisLast.tennis_connected : undefined}
+                />
+              </CardAction>
+              <div className="col-span-full pt-2">
+                <Stat label="Live matches" value={num(tennisLast?.tennis_num_live).toFixed(0)} />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Live scoreboard for the tracked match */}
+              {tennisLast?.tennis_connected && tennisLast?.tennis_match ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    {tennisLast.tennis_tour && (
+                      <Badge variant="secondary">{tennisLast.tennis_tour}</Badge>
+                    )}
+                    <span className="text-sm text-foreground font-medium">
+                      {tennisLast.tennis_match}
+                    </span>
+                    {tennisLast.tennis_tournament && (
+                      <span className="text-xs text-muted-foreground">
+                        · {tennisLast.tennis_tournament}
+                      </span>
+                    )}
+                    {tennisLast.tennis_is_tiebreak && <Badge variant="secondary">Tiebreak</Badge>}
+                    {tennisLast.tennis_break_point && <Badge variant="warning">Break point</Badge>}
+                  </div>
+
+                  {/* Score table — one row per player, color-keyed to the charts.
+                  The serving side carries a labelled badge, so "who is serving"
+                  is never conveyed by color alone. */}
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Player</TableHead>
+                        <TableHead className="text-right">Sets</TableHead>
+                        <TableHead className="text-right">Games</TableHead>
+                        <TableHead className="text-right">Points</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(
+                        [
+                          [
+                            tennisP1,
+                            P1_COLOR,
+                            1,
+                            num(tennisLast.tennis_sets_p1),
+                            num(tennisLast.tennis_games_p1),
+                            0,
+                          ],
+                          [
+                            tennisP2,
+                            P2_COLOR,
+                            2,
+                            num(tennisLast.tennis_sets_p2),
+                            num(tennisLast.tennis_games_p2),
+                            1,
+                          ],
+                        ] as const
+                      ).map(([name, _color, side, sets, games, ptIdx]) => (
+                        <TableRow key={side}>
+                          <TableCell>
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={`size-2 rounded-xs shrink-0 ${side === 1 ? "bg-chart-3" : "bg-chart-2"}`}
+                              />
+                              {name}
+                              {num(tennisLast.tennis_server) === side && (
+                                <Badge variant="success">Serving</Badge>
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {sets.toFixed(0)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {games.toFixed(0)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {(tennisLast.tennis_points ?? "").split("–")[ptIdx] || "–"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : !tennisSamples ? (
+                <Skeleton className="h-24 w-full" aria-label="Loading tennis board" />
+              ) : (
+                <Empty>
+                  <EmptyDescription>
+                    {num(tennisLast?.tennis_num_live) > 0
+                      ? "Live matches on court, but no score has been published yet."
+                      : "Nothing on court — tennis has quiet hours daily, which is a healthy state, not a fault. Set LIVETENNIS_API_KEY in Setup if the pill stays offline."}
+                  </EmptyDescription>
+                </Empty>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <SignalChart<TennisRow>
+                  title="Games — Current set"
+                  subtitle="Games won in the set in progress"
+                  data={tennisRows}
+                  connected={tennisLast ? !!tennisLast.tennis_connected : undefined}
+                  lineType="stepAfter"
+                  series={[
+                    { key: "gamesP1", label: tennisP1, color: P1_COLOR },
+                    { key: "gamesP2", label: tennisP2, color: P2_COLOR },
+                  ]}
+                  fmtY={(v) => v.toFixed(0)}
+                />
+                <SignalChart<TennisRow>
+                  title="Sets won"
+                  subtitle="Match score in sets"
+                  data={tennisRows}
+                  connected={tennisLast ? !!tennisLast.tennis_connected : undefined}
+                  lineType="stepAfter"
+                  series={[
+                    { key: "setsP1", label: tennisP1, color: P1_COLOR },
+                    { key: "setsP2", label: tennisP2, color: P2_COLOR },
+                  ]}
+                  fmtY={(v) => v.toFixed(0)}
+                />
+                <div className="lg:col-span-2">
+                  <SignalChart<TennisRow>
+                    title="Feed age"
+                    subtitle="Seconds since the tracked score last moved"
+                    data={tennisRows}
+                    connected={tennisLast ? !!tennisLast.tennis_connected : undefined}
+                    refY={TENNIS_STALENESS_SECS}
+                    refLabel={`stale > ${TENNIS_STALENESS_SECS}s`}
+                    series={[{ key: "feedAge", label: "feed age", color: "var(--chart-5)" }]}
+                    fmtY={(v) => `${v.toFixed(0)}s`}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <p className="text-xs text-muted-foreground">
+            The Tennis Raptor observes only — no Viper trades on it yet, and the tracked match is
+            chosen for signal liveness (sticky on the previous match, else the freshest score), not
+            because it maps to a listed market. It polls every ~15 min to stay inside the free tier
+            (100 requests/day), so <span className="text-muted-foreground">games</span> and{" "}
+            <span className="text-muted-foreground">sets</span> step rather than curve — the score
+            only ever moves in whole units, and between polls it genuinely has no value.{" "}
+            <span className="text-muted-foreground">Feed age</span> above the dashed line means the
+            score has gone stale, and the raptor then reports disconnected so a consumer widens or
+            pulls rather than holding on a frozen number.
+          </p>
         </div>
-
-        <p className="text-[10px] font-mono text-gray-600">
-          The Tennis Raptor observes only — no Viper trades on it yet, and the tracked match is
-          chosen for signal liveness (sticky on the previous match, else the freshest score), not
-          because it maps to a listed market. It polls every ~15 min to stay inside the free tier
-          (100 requests/day), so <span className="text-gray-500">games</span> and{' '}
-          <span className="text-gray-500">sets</span> step rather than curve — the score only ever
-          moves in whole units, and between polls it genuinely has no value.{' '}
-          <span className="text-gray-500">Feed age</span> above the dashed line means the score has
-          gone stale, and the raptor then reports disconnected so a consumer widens or pulls rather
-          than holding on a frozen number.
-        </p>
-      </div>
       )}
     </div>
   );
 }
-

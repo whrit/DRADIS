@@ -22,15 +22,15 @@
  * the admin session token arrives as X-Admin-Token and is forwarded as a Bearer
  * token for the engine's admin gate.
  */
-import type { NextRequest } from 'next/server';
+import type { NextRequest } from "next/server";
 
-export const ENGINE_API_BASE = process.env.DRADIS_API_URL ?? 'http://127.0.0.1:9000';
+export const ENGINE_API_BASE = process.env.DRADIS_API_URL ?? "http://127.0.0.1:9000";
 
 export function engineHeaders(req: NextRequest): Record<string, string> {
   const headers: Record<string, string> = {};
-  const apiKey = process.env.DRADIS_API_KEY ?? '';
-  if (apiKey) headers['X-API-Key'] = apiKey;
-  const adminToken = req.headers.get('x-admin-token');
-  if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+  const apiKey = process.env.DRADIS_API_KEY ?? "";
+  if (apiKey) headers["X-API-Key"] = apiKey;
+  const adminToken = req.headers.get("x-admin-token");
+  if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
   return headers;
 }

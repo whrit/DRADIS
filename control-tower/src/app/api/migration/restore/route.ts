@@ -26,12 +26,12 @@
  * `/api/migration/restore/apply` and `/discard` are ordinary JSON calls and
  * still go through the catch-all.
  */
-import type { NextRequest } from 'next/server';
-import { ENGINE_API_BASE, engineHeaders } from '@/lib/engineUpstream';
-import { basicAuthFailure } from '@/lib/basicAuth';
+import type { NextRequest } from "next/server";
+import { ENGINE_API_BASE, engineHeaders } from "@/lib/engineUpstream";
+import { basicAuthFailure } from "@/lib/basicAuth";
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   // This route is excluded from the Basic Auth middleware, because Next.js
@@ -42,19 +42,22 @@ export async function POST(req: NextRequest) {
 
   const search = new URL(req.url).search;
   try {
-    const init: RequestInit & { duplex: 'half' } = {
-      method: 'POST',
-      headers: { ...engineHeaders(req), 'Content-Type': 'application/gzip' },
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { ...engineHeaders(req), "Content-Type": "application/gzip" },
       body: req.body,
       // Node's fetch streams a request body only in half-duplex mode.
-      duplex: 'half',
-      cache: 'no-store',
+      duplex: "half",
+      cache: "no-store",
     };
     const upstream = await fetch(`${ENGINE_API_BASE}/api/migration/restore${search}`, init);
     const text = await upstream.text();
-    return new Response(text, { status: upstream.status, headers: { 'Content-Type': 'application/json' } });
+    return new Response(text, {
+      status: upstream.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
-    console.error('[migration] restore upload could not reach the engine:', err);
-    return Response.json({ error: 'DRADIS engine unreachable' }, { status: 503 });
+    console.error("[migration] restore upload could not reach the engine:", err);
+    return Response.json({ error: "DRADIS engine unreachable" }, { status: 503 });
   }
 }

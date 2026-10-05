@@ -25,8 +25,8 @@
  *   CT_USERNAME=admin
  *   CT_PASSWORD=your-strong-password
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { basicAuthFailure } from '@/lib/basicAuth';
+import { NextRequest, NextResponse } from "next/server";
+import { basicAuthFailure } from "@/lib/basicAuth";
 
 export function middleware(req: NextRequest) {
   return basicAuthFailure(req) ?? NextResponse.next();
@@ -43,7 +43,6 @@ export const config = {
   // The `$` matters: without it the exclusion is a prefix and would also drop
   // `restore/apply` and `restore/discard`, which restart the engine, out of auth.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|api/migration/restore$).*)',
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|api/migration/restore$).*)",
   ],
 };
-

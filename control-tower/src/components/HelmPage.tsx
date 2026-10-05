@@ -13,14 +13,17 @@
  * against what actually happened. Calibration last, and only once enough
  * intents have resolved to mean anything.
  */
-'use client';
+"use client";
 
-import useSWR from 'swr';
-import HelmIntentsPanel from './HelmIntentsPanel';
-import { getHelmSummary } from '@/lib/api';
+import useSWR from "swr";
+import HelmIntentsPanel from "./HelmIntentsPanel";
+import { getHelmSummary } from "@/lib/api";
+import { SectionHeader, Stat } from "./shared";
+import { Card } from "./ui/card";
+import { Progress } from "./ui/progress";
 
 export default function HelmPage() {
-  const { data: summary } = useSWR('helm-summary', getHelmSummary, { refreshInterval: 10_000 });
+  const { data: summary } = useSWR("helm-summary", getHelmSummary, { refreshInterval: 10_000 });
 
   const resolved = summary?.resolved ?? 0;
   const needed = summary?.calibration_min_resolved ?? 30;
@@ -28,19 +31,21 @@ export default function HelmPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-sm font-mono uppercase tracking-wide text-teal-300">🧭 Helm</h2>
-        <p className="text-[11px] font-mono text-gray-500 mt-1 max-w-3xl">
-          Convictions you took the helm for, with the thesis as first submitted. Intents outlive their
-          squadrons, so the record stays here after a squadron retires.
-        </p>
-      </div>
+      <SectionHeader
+        title="Helm"
+        description={
+          <>
+            Convictions you took the helm for, with the thesis as first submitted. Intents outlive
+            their squadrons, so the record stays here after a squadron retires.
+          </>
+        }
+      />
 
       <section className="space-y-2">
-        <h3 className="text-xs font-mono uppercase tracking-wide text-gray-400">Live</h3>
-        <p className="text-[10px] font-mono text-gray-600">
-          Money committed now, under a posture you can still revise.
-        </p>
+        <SectionHeader
+          title="Live"
+          description={<>Money committed now, under a posture you can still revise.</>}
+        />
         <HelmIntentsPanel
           bare
           show="live"
@@ -49,20 +54,21 @@ export default function HelmPage() {
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-xs font-mono uppercase tracking-wide text-gray-400">Resolved</h3>
-        <p className="text-[10px] font-mono text-gray-600">
-          How each conviction ended, and whether the critique named the failure that actually happened.
-        </p>
-        <HelmIntentsPanel
-          bare
-          show="resolved"
-          emptyText="No resolved intents yet."
+        <SectionHeader
+          title="Resolved"
+          description={
+            <>
+              How each conviction ended, and whether the critique named the failure that actually
+              happened.
+            </>
+          }
         />
+        <HelmIntentsPanel bare show="resolved" emptyText="No resolved intents yet." />
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-xs font-mono uppercase tracking-wide text-gray-400">Calibration</h3>
-        <div className="card p-4 border border-[#1e1e32] bg-[#0d0d1a] space-y-2">
+        <SectionHeader title="Calibration" />
+        <Card size="sm" className="px-4 gap-3">
           {/*
             Deliberately shows no figure until the sample supports one. Ten
             resolved intents with stated probabilities would invite a
@@ -71,24 +77,20 @@ export default function HelmPage() {
             evidence. Everything is recorded from the first intent; only the
             display waits.
           */}
-          <p className="text-xs font-mono text-gray-300">
-            {resolved} of {needed} resolved intents
-          </p>
-          <div className="h-1.5 bg-[#1e1e32] rounded overflow-hidden">
-            <div className="h-full bg-teal-500/60" style={{ width: `${pct}%` }} />
-          </div>
+          <Stat label="Resolved intents" value={`${resolved} of ${needed}`} />
+          <Progress value={pct} aria-label="Calibration sample progress" />
           {summary?.calibration_visible && summary.calibration ? (
-            <pre className="text-[11px] font-mono text-gray-300 whitespace-pre-wrap">
+            <pre className="text-xs font-mono tabular-nums text-foreground whitespace-pre-wrap">
               {JSON.stringify(summary.calibration, null, 2)}
             </pre>
           ) : (
-            <p className="text-[10px] font-mono text-gray-500">
-              Stated confidence against realized outcome, and the critique&apos;s hit rate, appear once{' '}
-              {needed} intents have resolved. Recorded from the first one; a figure drawn from fewer
-              would read as evidence without being any.
+            <p className="text-xs text-muted-foreground">
+              Stated confidence against realized outcome, and the critique&apos;s hit rate, appear
+              once {needed} intents have resolved. Recorded from the first one; a figure drawn from
+              fewer would read as evidence without being any.
             </p>
           )}
-        </div>
+        </Card>
       </section>
     </div>
   );

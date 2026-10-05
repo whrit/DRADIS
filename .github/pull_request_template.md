@@ -25,7 +25,7 @@ a review would raise anyway — running through it first usually saves a round t
       ```
 - [ ] **Control Tower builds**, if the change touches it:
       ```bash
-      cd control-tower && npx tsc --noEmit && npx next build
+      cd control-tower && pnpm check && pnpm build
       ```
 - [ ] **New constants are in all three profile templates** —
       `src/config.conservative.rs.example`, `src/config.balanced.rs.example` and

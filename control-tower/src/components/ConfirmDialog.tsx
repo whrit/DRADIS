@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,7 +16,17 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /**
  * In-app replacement for `window.confirm`.
@@ -26,7 +36,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
  * blocks the JS thread — which stalls SWR polling behind it. This keeps the
  * Control Tower's own look and lets a confirmation show real data.
  *
- * Styling follows the AdvancedConfigModal idiom so all overlays match.
+ * Uses the shared dialog primitives so all overlays match.
  */
 
 export interface ConfirmOptions {
@@ -36,7 +46,7 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   /** `danger` styles the confirm button as destructive. */
-  tone?: 'default' | 'danger';
+  tone?: "default" | "danger";
 }
 
 /**
@@ -60,7 +70,9 @@ export function useConfirm(): [(opts: ConfirmOptions) => Promise<boolean>, React
     // and leak the caller's `await`. Resolve it as cancelled first.
     resolver.current?.(false);
     setOpts(o);
-    return new Promise<boolean>(resolve => { resolver.current = resolve; });
+    return new Promise<boolean>((resolve) => {
+      resolver.current = resolve;
+    });
   }, []);
 
   const settle = useCallback((ok: boolean) => {
@@ -69,76 +81,85 @@ export function useConfirm(): [(opts: ConfirmOptions) => Promise<boolean>, React
     setOpts(null);
   }, []);
 
-  const dialog = opts
-    ? <ConfirmDialog opts={opts} onResolve={settle} />
-    : null;
+  const dialog = opts ? <ConfirmDialog opts={opts} onResolve={settle} /> : null;
 
   return [confirm, dialog];
 }
 
 function ConfirmDialog({
-  opts, onResolve,
+  opts,
+  onResolve,
 }: {
   opts: ConfirmOptions;
   onResolve: (ok: boolean) => void;
 }) {
   const confirmBtn = useRef<HTMLButtonElement>(null);
 
-  // Escape cancels — matches both the native dialog and AdvancedConfigModal.
+  // Escape and backdrop clicks cancel, matching the previous dialog.
+  // Focus the confirm action so Enter works without reaching for the mouse.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onResolve(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onClick = (event: MouseEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches('[data-slot="alert-dialog-overlay"]')
+      )
+        onResolve(false);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
   }, [onResolve]);
 
-  // Focus the confirm action so Enter works without reaching for the mouse.
-  useEffect(() => { confirmBtn.current?.focus(); }, []);
-
-  const danger = opts.tone === 'danger';
+  const danger = opts.tone === "danger";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={() => onResolve(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label={opts.title}
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onResolve(false);
+      }}
     >
-      <div
-        className="card w-full max-w-md flex flex-col shadow-2xl"
-        onClick={e => e.stopPropagation()}
+      <AlertDialogContent
+        className="max-h-dvh overflow-y-auto sm:max-w-md"
+        aria-describedby={opts.body != null ? "confirm-dialog-body" : undefined}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          confirmBtn.current?.focus();
+        }}
       >
-        <div className="px-5 py-3 border-b border-[#1e1e32]">
-          <h2 className="text-sm font-semibold text-white">{opts.title}</h2>
-        </div>
-
-        {opts.body != null && (
-          <div className="px-5 py-4 text-xs text-gray-400 space-y-2 max-h-[60vh] overflow-y-auto">
-            {opts.body}
-          </div>
-        )}
-
-        <div className="px-5 py-3 border-t border-[#1e1e32] flex justify-end gap-2">
-          <button
-            onClick={() => onResolve(false)}
-            className="text-xs font-mono px-3 py-1.5 rounded-lg border bg-[#13131f] border-[#1e1e32] text-gray-400 hover:border-gray-600 hover:text-gray-200 transition-colors"
+        <AlertDialogHeader>
+          <AlertDialogTitle>{opts.title}</AlertDialogTitle>
+          {opts.body != null && (
+            <AlertDialogDescription asChild>
+              <div
+                id="confirm-dialog-body"
+                className="max-h-96 space-y-2 overflow-y-auto text-xs text-muted-foreground"
+              >
+                {opts.body}
+              </div>
+            </AlertDialogDescription>
+          )}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            onClick={(event) => {
+              event.preventDefault();
+              onResolve(false);
+            }}
           >
-            {opts.cancelLabel ?? 'Cancel'}
-          </button>
-          <button
+            {opts.cancelLabel ?? "Cancel"}
+          </AlertDialogCancel>
+          <AlertDialogAction
             ref={confirmBtn}
-            onClick={() => onResolve(true)}
-            className={[
-              'text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors',
-              danger
-                ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20'
-                : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30',
-            ].join(' ')}
+            variant={danger ? "destructive" : "default"}
+            onClick={(event) => {
+              event.preventDefault();
+              onResolve(true);
+            }}
           >
-            {opts.confirmLabel ?? 'Confirm'}
-          </button>
-        </div>
-      </div>
-    </div>
+            {opts.confirmLabel ?? "Confirm"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

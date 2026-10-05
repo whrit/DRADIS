@@ -1,0 +1,6 @@
+# pnpm settings for the Control Tower (single package, not a workspace).
+#
+# Security floor, see docs/SECURITY-NOTES.md. pnpm ignores npm's `overrides`
+# field in package.json; overrides live here.
+overrides:
+  sharp: ^0.35.4

@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,10 +16,13 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import useSWR from 'swr';
-import { getLatency } from '@/lib/api';
-import { getSetupStatus } from '@/lib/setupApi';
-import { DEMO_MODE } from '@/lib/demo';
+import useSWR from "swr";
+import { getLatency } from "@/lib/api";
+import { getSetupStatus } from "@/lib/setupApi";
+import { DEMO_MODE } from "@/lib/demo";
+import { BroadcastIcon, WarningIcon } from "@phosphor-icons/react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
  * Venue latency pill — rolling engine→venue round-trip measured server-side
@@ -30,7 +33,7 @@ import { DEMO_MODE } from '@/lib/demo';
  * a region nearer the venue.
  */
 function LatencyMeter() {
-  const { data } = useSWR('latency', getLatency, {
+  const { data } = useSWR("latency", getLatency, {
     refreshInterval: 15_000,
     revalidateOnFocus: false,
   });
@@ -41,26 +44,31 @@ function LatencyMeter() {
   const ms = data.p50_ms ?? data.last_ms;
   const unreachable = !data.ok && ms === null;
 
-  const color = unreachable || !data.ok
-    ? 'text-red-400 border-red-500/30 bg-red-500/10'
-    : ms !== null && ms < 150
-      ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
-      : ms !== null && ms < 400
-        ? 'text-amber-300 border-amber-500/30 bg-amber-500/10'
-        : 'text-red-400 border-red-500/30 bg-red-500/10';
+  const tone =
+    unreachable || !data.ok
+      ? "destructive"
+      : ms !== null && ms < 150
+        ? "success"
+        : ms !== null && ms < 400
+          ? "warning"
+          : "destructive";
 
-  const label = unreachable
-    ? `${data.venue} UNREACHABLE`
-    : `${data.venue} ${ms}ms${data.ok ? '' : ' ⚠'}`;
+  const label = unreachable ? `${data.venue} UNREACHABLE` : `${data.venue} ${ms}ms`;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono ${color}`}
-      title={`Round-trip from your DRADIS server to the trading venue (median of last ${data.samples} probes). High latency? Deploy your instance in a region closer to the venue.`}
-    >
-      <span>📶</span>
-      <span>{label}</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant={tone} className="gap-1 tabular-nums">
+          <BroadcastIcon aria-hidden />
+          <span>{label}</span>
+          {!data.ok && !unreachable && <WarningIcon aria-label="Probe failed" />}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>
+        Round-trip from your DRADIS server to the trading venue (median of last {data.samples}{" "}
+        probes). High latency? Deploy your instance in a region closer to the venue.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -80,7 +88,7 @@ function LatencyMeter() {
  * public demo, which does not serve the setup endpoint.
  */
 function EngineVersion() {
-  const { data } = useSWR(!DEMO_MODE ? 'setupStatus' : null, getSetupStatus, {
+  const { data } = useSWR(!DEMO_MODE ? "setupStatus" : null, getSetupStatus, {
     refreshInterval: 60_000,
     revalidateOnFocus: false,
   });
@@ -88,25 +96,24 @@ function EngineVersion() {
   if (!data?.app_version) return null;
 
   return (
-    <span
-      className="text-gray-600"
-      title="DRADIS engine version running on this instance"
-    >
-      v{data.app_version}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="font-mono tabular-nums">v{data.app_version}</span>
+      </TooltipTrigger>
+      <TooltipContent>DRADIS engine version running on this instance</TooltipContent>
+    </Tooltip>
   );
 }
 
 /** Shared page footer: branding line + venue latency meter + engine version. */
 export default function Footer() {
   return (
-    <footer className="text-center text-xs text-gray-700 pb-4 font-mono space-y-2">
+    <footer className="space-y-2 pb-4 text-center text-xs text-muted-foreground">
       <div>
         <LatencyMeter />
       </div>
       <div>
-        DRADIS Control Tower  Polymarket CLOB Orchestrator{' '}
-        <span className="text-gray-600">So say we all.</span>{' '}
+        DRADIS Control Tower Polymarket CLOB Orchestrator <span>So say we all. Good hunting.</span>{" "}
         <EngineVersion />
       </div>
     </footer>

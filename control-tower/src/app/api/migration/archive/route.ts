@@ -22,26 +22,26 @@
  * megabytes in memory. This route hands the engine's body through as a stream,
  * with its download headers.
  */
-import type { NextRequest } from 'next/server';
-import { ENGINE_API_BASE, engineHeaders } from '@/lib/engineUpstream';
+import type { NextRequest } from "next/server";
+import { ENGINE_API_BASE, engineHeaders } from "@/lib/engineUpstream";
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
     const upstream = await fetch(`${ENGINE_API_BASE}/api/migration/archive`, {
       headers: engineHeaders(req),
-      cache: 'no-store',
+      cache: "no-store",
     });
     const headers = new Headers();
-    for (const name of ['content-type', 'content-length', 'content-disposition']) {
+    for (const name of ["content-type", "content-length", "content-disposition"]) {
       const value = upstream.headers.get(name);
       if (value) headers.set(name, value);
     }
     return new Response(upstream.body, { status: upstream.status, headers });
   } catch (err) {
-    console.error('[migration] archive download could not reach the engine:', err);
-    return Response.json({ error: 'DRADIS engine unreachable' }, { status: 503 });
+    console.error("[migration] archive download could not reach the engine:", err);
+    return Response.json({ error: "DRADIS engine unreachable" }, { status: 503 });
   }
 }

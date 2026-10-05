@@ -16,39 +16,135 @@
  * with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens. Dark-only: the Control Tower is an always-on operator console.
+ * Neutrals carry a faint cool tint (hue 265) so surfaces read as one family.
+ * One brand accent (primary, sky). Status colors carry meaning, never decoration:
+ *   success  = profit, healthy, live, filled
+ *   destructive = loss, error, offline, rejected
+ *   warning  = ghost/simulated mode, caution, stale, pending
+ * Categorical series (assets, strategies, chart lines) use chart-1..5.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(0.145 0.008 265);
+  --foreground: oklch(0.96 0.004 265);
+  --card: oklch(0.172 0.009 265);
+  --card-foreground: oklch(0.96 0.004 265);
+  --popover: oklch(0.19 0.01 265);
+  --popover-foreground: oklch(0.96 0.004 265);
+  --primary: oklch(0.78 0.11 228);
+  --primary-foreground: oklch(0.18 0.03 240);
+  --secondary: oklch(0.235 0.011 265);
+  --secondary-foreground: oklch(0.96 0.004 265);
+  --muted: oklch(0.215 0.01 265);
+  --muted-foreground: oklch(0.68 0.014 265);
+  --accent: oklch(0.25 0.012 265);
+  --accent-foreground: oklch(0.96 0.004 265);
+  --destructive: oklch(0.68 0.19 22);
+  --success: oklch(0.75 0.15 158);
+  --warning: oklch(0.8 0.14 78);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.78 0.11 228);
+
+  --chart-1: oklch(0.78 0.11 228);
+  --chart-2: oklch(0.75 0.15 158);
+  --chart-3: oklch(0.8 0.14 78);
+  --chart-4: oklch(0.7 0.14 295);
+  --chart-5: oklch(0.7 0.17 12);
+
+  --sidebar: oklch(0.16 0.009 265);
+  --sidebar-foreground: oklch(0.96 0.004 265);
+  --sidebar-primary: oklch(0.78 0.11 228);
+  --sidebar-primary-foreground: oklch(0.18 0.03 240);
+  --sidebar-accent: oklch(0.25 0.012 265);
+  --sidebar-accent-foreground: oklch(0.96 0.004 265);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.78 0.11 228);
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* One sub-`xs` step for dense metadata (timestamps, IDs, footnotes). Nothing smaller. */
+@theme {
+  --text-2xs: 0.6875rem;
+}
 
 @layer base {
   :root {
     color-scheme: dark;
   }
-  html, body {
-    @apply bg-[#0a0a12] text-gray-100 antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+  * {
+    @apply border-border outline-ring/50;
   }
-  /* Scrollbar styling */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-gray-700 rounded; }
-}
-
-@layer components {
-  .card {
-    @apply bg-[#13131f] border border-[#1e1e32] rounded-xl;
+  html {
+    @apply font-sans;
   }
-  .label-muted {
-    @apply text-xs text-gray-500 uppercase tracking-widest;
+  body {
+    @apply bg-background text-foreground;
   }
-  .stat-value {
-    @apply text-2xl font-semibold font-mono tabular-nums;
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
-  .input-field {
-    @apply bg-[#0a0a12] border border-[#1e1e32] rounded px-2 py-1 text-sm font-mono
-           text-right tabular-nums w-24
-           focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30
-           transition-colors;
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-sm bg-muted;
   }
 }
-

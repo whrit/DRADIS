@@ -24,10 +24,9 @@
 //
 // NEXT_PUBLIC_* vars are inlined at build time, so this works in both server and
 // client components.
-export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-/** Public repo URL surfaced in the demo banner. */
-export const REPO_URL = 'https://github.com/mbordash/DRADIS';
+/** Public repo URL. */
+export const REPO_URL = "https://github.com/mbordash/DRADIS";
 
-export const HOME_URL = 'https://dradis.live';
-
+export const HOME_URL = "https://dradis.live";

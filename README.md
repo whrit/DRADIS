@@ -917,7 +917,7 @@ Query your running deployment conversationally from any client that speaks the
 covering positions, trades, P&L, raptor telemetry and the AI advisor audit trail.
 
 ```bash
-cd integrations/mcp && npm install
+cd integrations/mcp && pnpm install
 ```
 
 | You ask                                      | Tool used            |

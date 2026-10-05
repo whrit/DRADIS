@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 // SPDX-License-Identifier: AGPL-3.0-only
 //
@@ -16,49 +16,75 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { useCallback, useEffect, useState } from 'react';
-import useSWR from 'swr';
-import type { SquadronSummary, SquadronState, DeploymentStatus } from '@/lib/types';
-import { marketLabel } from '@/lib/types';
-import { getOpenPositions, getVipersForClass, getSquadronConfig, getDeployments, retryDeployment, dismissDeployment, VIPER_DEFS } from '@/lib/api';
-import DeploySquadronModal from './DeploySquadronModal';
-import TakeTheHelmModal from './TakeTheHelmModal';
-import { HelmLiveLine } from './HelmIntentsPanel';
+import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
+import type { SquadronSummary, SquadronState, DeploymentStatus } from "@/lib/types";
+import { marketLabel } from "@/lib/types";
+import {
+  getOpenPositions,
+  getVipersForClass,
+  getSquadronConfig,
+  getDeployments,
+  retryDeployment,
+  dismissDeployment,
+  VIPER_DEFS,
+} from "@/lib/api";
+import DeploySquadronModal from "./DeploySquadronModal";
+import TakeTheHelmModal from "./TakeTheHelmModal";
+import { HelmLiveLine } from "./HelmIntentsPanel";
+import { AirplaneIcon, CaretRightIcon, CompassIcon, PlusIcon } from "@phosphor-icons/react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardAction, CardContent } from "@/components/ui/card";
+import { Item } from "@/components/ui/item";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { StatusDot } from "@/components/shared";
 
 // ── State badge ───────────────────────────────────────────────────────────────
 
-const STATE_STYLES: Record<SquadronState, { bg: string; text: string; dot: string; pulse: boolean }> = {
-  STAGED:      { bg: 'bg-gray-500/10',   text: 'text-gray-400',   dot: 'bg-gray-500',   pulse: false },
-  DEPLOYED:    { bg: 'bg-blue-500/10',   text: 'text-blue-300',   dot: 'bg-blue-400',   pulse: false },
-  PATROLLING:  { bg: 'bg-green-500/10',  text: 'text-green-300',  dot: 'bg-green-400',  pulse: true  },
-  RTB:         { bg: 'bg-amber-500/10',  text: 'text-amber-300',  dot: 'bg-amber-400',  pulse: false },
-  STOOD_DOWN:  { bg: 'bg-red-500/10',    text: 'text-red-400',    dot: 'bg-red-500',    pulse: false },
-};
-
 function StateBadge({ state }: { state: SquadronState }) {
-  const s = STATE_STYLES[state] ?? STATE_STYLES['STAGED'];
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full border border-white/5 ${s.bg} ${s.text}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${s.dot} ${s.pulse ? 'animate-pulse' : ''}`} />
+    <Badge
+      variant={
+        state === "PATROLLING"
+          ? "success"
+          : state === "STAGED"
+            ? "warning"
+            : state === "DEPLOYED"
+              ? "default"
+              : "outline"
+      }
+    >
       {state}
-    </span>
+    </Badge>
   );
 }
 
 // ── Asset chip ────────────────────────────────────────────────────────────────
 
 const ASSET_COLORS: Record<string, string> = {
-  BTC: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
-  ETH: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
-  SOL: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
+  BTC: "bg-chart-1/10 text-chart-1 border-chart-1/20",
+  ETH: "bg-chart-2/10 text-chart-2 border-chart-2/20",
+  SOL: "bg-chart-3/10 text-chart-3 border-chart-3/20",
 };
 
 function AssetChip({ asset }: { asset: string }) {
-  const cls = ASSET_COLORS[asset] ?? 'bg-gray-500/10 text-gray-300 border-gray-500/20';
   return (
-    <span className={`inline-flex items-center text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${cls}`}>
-      {asset}
-    </span>
+    <Badge
+      variant="outline"
+      className={ASSET_COLORS[asset] ?? "text-chart-4 border-chart-4/20 bg-chart-4/10"}
+    >
+      <span className="font-mono">{asset}</span>
+    </Badge>
   );
 }
 
@@ -66,11 +92,11 @@ function AssetChip({ asset }: { asset: string }) {
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
-  const mins   = Math.floor(diffMs / 60_000);
-  if (mins < 1)   return 'just now';
-  if (mins < 60)  return `${mins}m ago`;
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs  < 24)  return `${hrs}h ago`;
+  if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
@@ -91,25 +117,29 @@ function timeAgo(iso: string): string {
  * which is where "the rest need a per-market price signal only crypto provides"
  * belongs.
  */
-function ViperCoverage({ squadronId, marketClass, vipers }: {
+function ViperCoverage({
+  squadronId,
+  marketClass,
+  vipers,
+}: {
   squadronId: string;
   marketClass: string;
   vipers?: string[];
 }) {
   const { data: mine } = useSWR(
-    ['vipers-for-class', marketClass],
+    ["vipers-for-class", marketClass],
     () => getVipersForClass(marketClass as never),
     { revalidateOnFocus: false },
   );
   const { data: full } = useSWR(
-    ['vipers-for-class', 'crypto'],
-    () => getVipersForClass('crypto' as never),
+    ["vipers-for-class", "crypto"],
+    () => getVipersForClass("crypto" as never),
     { revalidateOnFocus: false },
   );
   // Enablement is per squadron, so it comes from the squadron's own config row
   // rather than the global one.
   const { data: cfg } = useSWR(
-    ['squadron-config', squadronId],
+    ["squadron-config", squadronId],
     () => getSquadronConfig(squadronId),
     { revalidateOnFocus: false, refreshInterval: 30_000 },
   );
@@ -117,16 +147,13 @@ function ViperCoverage({ squadronId, marketClass, vipers }: {
 
   // What this squadron can run. The squadron's own list when the engine reports
   // one, else the market class's.
-  const applicable = (vipers && vipers.length > 0)
-    ? mine.filter(v => vipers.includes(v.id))
-    : mine;
+  const applicable = vipers && vipers.length > 0 ? mine.filter((v) => vipers.includes(v.id)) : mine;
 
   // Enabled is only knowable once the config has loaded; until then say how many
   // could run rather than guessing at zero, which would read as a dead squadron.
-  const enableKeyFor = (id: string) =>
-    VIPER_DEFS.find(d => d.statusKey === id)?.enableKey;
+  const enableKeyFor = (id: string) => VIPER_DEFS.find((d) => d.statusKey === id)?.enableKey;
   const active = cfg
-    ? applicable.filter(v => {
+    ? applicable.filter((v) => {
         const k = enableKeyFor(v.id);
         // No enable key means nothing can switch it off.
         return k ? cfg[k] !== false : true;
@@ -138,111 +165,126 @@ function ViperCoverage({ squadronId, marketClass, vipers }: {
   // Amber only when something is off. A squadron running everything it can is
   // healthy even if its class supports fewer strategies than crypto does.
   const partial = on !== undefined && on < total;
-  const offNames = active && applicable
-    .filter(v => !active.some(a => a.id === v.id))
-    .map(v => v.display);
+  const offNames =
+    active && applicable.filter((v) => !active.some((a) => a.id === v.id)).map((v) => v.display);
 
+  const explanation = [
+    on === undefined
+      ? `${total} strategies apply to ${marketClass} markets.`
+      : `${on} of ${total} strategies active: ${active!.map((v) => v.display).join(", ") || "none"}.`,
+    offNames && offNames.length > 0 ? `Switched off: ${offNames.join(", ")}.` : "",
+    total < full.length
+      ? `${total} of ${full.length} strategies apply to ${marketClass} markets — the rest need a per-market price signal that only crypto markets provide.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <span
-      className={`text-[10px] font-mono rounded px-2 py-0.5 border ${
-        partial
-          ? 'bg-amber-500/10 text-amber-300 border-amber-500/25'
-          : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-      }`}
-      title={[
-        on === undefined
-          ? `${total} strategies apply to ${marketClass} markets.`
-          : `${on} of ${total} strategies active: ${active!.map(v => v.display).join(', ') || 'none'}.`,
-        offNames && offNames.length > 0 ? `Switched off: ${offNames.join(', ')}.` : '',
-        total < full.length
-          ? `${total} of ${full.length} strategies apply to ${marketClass} markets — the rest need a ` +
-            `per-market price signal that only crypto markets provide.`
-          : '',
-      ].filter(Boolean).join(' ')}
-    >
-      {on === undefined ? total : on}/{total} strategies active
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant={partial ? "warning" : "success"}>
+          <span className="font-mono tabular-nums">
+            {on === undefined ? total : on}/{total}
+          </span>{" "}
+          strategies active
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-80">{explanation}</TooltipContent>
+    </Tooltip>
   );
 }
 
 function SquadronRow({
   sq,
   onClick,
-  missionCount
+  missionCount,
 }: {
   sq: SquadronSummary;
   onClick?: (sq: SquadronSummary) => void;
   missionCount?: number;
 }) {
   return (
-    <button
-      onClick={() => onClick?.(sq)}
-      className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 border-b border-[#1e1e32] last:border-0 hover:bg-white/[0.02] transition-colors text-left cursor-pointer"
-    >
-      {/* Left — asset + name */}
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        <AssetChip asset={sq.asset} />
-        <div className="min-w-0">
-          <p className="text-xs font-mono text-gray-200 truncate" title={sq.name}>{sq.name}</p>
-          <p
-            className={`text-[10px] font-mono truncate mt-0.5 ${sq.market_name ? 'text-gray-500' : 'text-gray-600 italic'}`}
-            title={marketLabel(sq.market_name)}
-          >
-            {sq.market_name ? '⚔️' : '⏳'} {marketLabel(sq.market_name)}
-          </p>
-          {sq.maker_market_name && (
-            <p className="text-[10px] font-mono text-gray-600 truncate mt-0.5" title={sq.maker_market_name}>
-              🗓 {sq.maker_market_name}
+    <Item asChild size="sm">
+      <button
+        type="button"
+        onClick={() => onClick?.(sq)}
+        className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 border-b border-border last:border-0 hover:bg-muted/2 transition-colors text-left cursor-pointer"
+      >
+        {/* Left — asset + name */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <AssetChip asset={sq.asset} />
+          <div className="min-w-0">
+            <p className="text-xs  text-muted-foreground truncate" title={sq.name}>
+              {sq.name}
             </p>
-          )}
-          {sq.stood_down_reason && (
-            <p className="text-[10px] font-mono text-gray-500 truncate mt-0.5" title={sq.stood_down_reason}>
-              🏁 retired: {sq.stood_down_reason} — this entry is removed shortly
+            <p
+              className={`text-xs  truncate mt-0.5 ${sq.market_name ? "text-muted-foreground" : "text-muted-foreground italic"}`}
+              title={marketLabel(sq.market_name)}
+            >
+              {marketLabel(sq.market_name)}
             </p>
-          )}
+            {sq.maker_market_name && (
+              <p
+                className="text-xs  text-muted-foreground truncate mt-0.5"
+                title={sq.maker_market_name}
+              >
+                {sq.maker_market_name}
+              </p>
+            )}
+            {sq.stood_down_reason && (
+              <p
+                className="text-xs  text-muted-foreground truncate mt-0.5"
+                title={sq.stood_down_reason}
+              >
+                Retired: {sq.stood_down_reason} — this entry is removed shortly
+              </p>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Right — tags on one line, metadata beneath.
+        {/* Right — tags on one line, metadata beneath.
           Stacked rather than run together on a single line: rows carry a
           varying number of tags (a squadron may have no mission count, or an
           unknown market class), so on one line the deployed-time and id slid
           horizontally from row to row and no column lined up. Splitting them
           gives the tags a row of their own, right-aligned, so they read as a
           column down the panel. */}
-      <div className="flex flex-col items-end gap-1 shrink-0">
-        <div className="flex items-center gap-2">
-          {sq.market_class && sq.market_class !== 'unknown' && (
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-2">
+            {sq.market_class && sq.market_class !== "unknown" && (
+              <Badge variant="outline" className="border-chart-4/20 bg-chart-4/10 text-chart-4">
+                {sq.market_class}
+              </Badge>
+            )}
+            {sq.market_class && (
+              <ViperCoverage squadronId={sq.id} marketClass={sq.market_class} vipers={sq.vipers} />
+            )}
+            {missionCount !== undefined && missionCount > 0 && (
+              <Badge variant="secondary">
+                <AirplaneIcon />
+                <span className="font-mono tabular-nums">{missionCount}</span>{" "}
+                {missionCount === 1 ? "mission" : "missions"}
+              </Badge>
+            )}
+            <StateBadge state={sq.state} />
+          </div>
+          <div className="flex items-center gap-2">
             <span
-              className="text-[10px] font-mono uppercase tracking-wide bg-violet-500/10 text-violet-300 border border-violet-500/20 rounded px-2 py-0.5"
-              title={`Market class: ${sq.market_class}`}
+              className="text-xs font-mono tabular-nums text-muted-foreground"
+              title={sq.deployed_at}
             >
-              {sq.market_class}
+              {timeAgo(sq.deployed_at)}
             </span>
-          )}
-          {sq.market_class && (
-            <ViperCoverage squadronId={sq.id} marketClass={sq.market_class} vipers={sq.vipers} />
-          )}
-          {missionCount !== undefined && missionCount > 0 && (
-            <span className="text-[10px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 rounded px-2 py-0.5" title={`${missionCount} active mission${missionCount === 1 ? '' : 's'}`}>
-              ✈️ {missionCount}
+            <span
+              className="hidden lg:inline text-2xs font-mono text-muted-foreground truncate max-w-45"
+              title={sq.id}
+            >
+              {sq.id}
             </span>
-          )}
-          <StateBadge state={sq.state} />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-gray-600" title={sq.deployed_at}>
-            {timeAgo(sq.deployed_at)}
-          </span>
-          <span
-            className="hidden lg:inline text-[9px] font-mono text-gray-700 truncate max-w-[180px]"
-            title={sq.id}
-          >
-            {sq.id}
-          </span>
-        </div>
-      </div>
-    </button>
+      </button>
+    </Item>
   );
 }
 
@@ -259,13 +301,22 @@ function SquadronRow({
 // These rows come straight from the queue, so they say what is actually true
 // rather than assuming the deploy will succeed.
 
-const DEPLOY_STATUS_STYLES: Record<string, { label: string; bg: string; text: string; dot: string; pulse: boolean }> = {
-  pending:    { label: 'QUEUED',   bg: 'bg-amber-500/10', text: 'text-amber-300', dot: 'bg-amber-400', pulse: true  },
-  processing: { label: 'STARTING', bg: 'bg-blue-500/10',  text: 'text-blue-300',  dot: 'bg-blue-400',  pulse: true  },
-  failed:     { label: 'FAILED',   bg: 'bg-red-500/10',   text: 'text-red-300',   dot: 'bg-red-500',   pulse: false },
+const DEPLOY_STATUS_STYLES: Record<
+  string,
+  { label: string; variant: "warning" | "destructive"; pulse: boolean }
+> = {
+  pending: { label: "QUEUED", variant: "warning", pulse: true },
+  processing: { label: "STARTING", variant: "warning", pulse: true },
+  failed: { label: "FAILED", variant: "destructive", pulse: false },
 };
 
-function PendingDeploymentRow({ dep, onRetry, onDismiss, busy, error }: {
+function PendingDeploymentRow({
+  dep,
+  onRetry,
+  onDismiss,
+  busy,
+  error,
+}: {
   dep: DeploymentStatus;
   onRetry: (id: string) => void;
   onDismiss: (id: string) => void;
@@ -274,60 +325,62 @@ function PendingDeploymentRow({ dep, onRetry, onDismiss, busy, error }: {
 }) {
   const style = DEPLOY_STATUS_STYLES[dep.status] ?? DEPLOY_STATUS_STYLES.pending;
   return (
-    <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-[#1e1e32] last:border-b-0">
+    <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-border last:border-b-0">
       <div className="flex items-center gap-3 min-w-0">
-        <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono ${style.bg} ${style.text} rounded-full px-2 py-0.5 shrink-0`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${style.dot} ${style.pulse ? 'animate-pulse' : ''}`} />
+        <Badge variant={style.variant}>
+          <StatusDot tone={style.variant} pulse={style.pulse} />
           {style.label}
-        </span>
+        </Badge>
         <div className="min-w-0">
-          <div className="text-xs font-mono text-gray-300 truncate">
-            {dep.market_type} squadron
-          </div>
-          {dep.status === 'failed' && dep.error ? (
-            <div className="text-[10px] font-mono text-red-400/80 truncate" title={dep.error}>
+          <div className="text-xs  text-muted-foreground truncate">{dep.market_type} squadron</div>
+          {dep.status === "failed" && dep.error ? (
+            <div className="text-xs  text-destructive/80 truncate" title={dep.error}>
               {dep.error}
             </div>
           ) : (
-            <div className="text-[10px] font-mono text-gray-600 truncate" title={dep.market_id}>
+            <div className="text-xs  text-muted-foreground truncate" title={dep.market_id}>
               {dep.market_id}
             </div>
           )}
         </div>
       </div>
-      {dep.status === 'failed' ? (
+      {dep.status === "failed" ? (
         // A failed deployment has no squadron behind it, so there is nothing to
         // stand down — only a record to act on. Retry is worth offering because
         // failures differ in kind: "market no longer listed" will fail again and
         // wants dismissing, while a venue rate-limit or a transient connect
         // error is exactly the case that succeeds on a second attempt.
         <div className="flex items-center gap-2 shrink-0">
-          <button
+          <Button
+            variant="outline"
             onClick={() => onRetry(dep.id)}
             disabled={busy}
-            className="text-[10px] font-mono border border-amber-500/30 text-amber-300 bg-amber-500/10
-                       rounded px-2 py-1 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-            title="Queue this deployment again"
+            className="text-xs  border border-warning/30 text-warning bg-warning/10
+                       rounded px-2 py-1 hover:bg-warning/20 transition-colors disabled:opacity-50"
+            aria-label="Queue this deployment again"
           >
             Retry
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => onDismiss(dep.id)}
             disabled={busy}
-            className="text-[10px] font-mono border border-[#1e1e32] text-gray-400
-                       rounded px-2 py-1 hover:text-gray-200 hover:border-gray-600
+            className="text-xs  border border-border text-muted-foreground
+                       rounded px-2 py-1 hover:text-muted-foreground hover:border-border
                        transition-colors disabled:opacity-50"
-            title="Acknowledge and hide this failure"
+            aria-label="Acknowledge and hide this failure"
           >
             Dismiss
-          </button>
+          </Button>
         </div>
       ) : (
-        <span className="text-[10px] font-mono text-gray-600 shrink-0">
-          waiting for the engine
-        </span>
+        <span className="text-xs  text-muted-foreground shrink-0">waiting for the engine</span>
       )}
-      {error && <span className="basis-full text-[10px] font-mono text-red-400 mt-1">{error}</span>}
+      {error && (
+        <Alert variant="destructive" className="basis-full mt-2">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
     </div>
   );
 }
@@ -335,21 +388,21 @@ function PendingDeploymentRow({ dep, onRetry, onDismiss, busy, error }: {
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyState({ isLoading }: { isLoading: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-600">
-      {isLoading ? (
-        <>
-          <span className="text-2xl animate-pulse">✈️</span>
-          <span className="text-xs font-mono">Loading squadrons…</span>
-        </>
-      ) : (
-        <>
-          <span className="text-2xl opacity-30">🛬</span>
-          <span className="text-xs font-mono">No squadrons deployed</span>
-          <span className="text-[10px] text-gray-700">Start DRADIS to deploy a squadron</span>
-        </>
-      )}
+  return isLoading ? (
+    <div className="space-y-3 px-4 py-3" aria-label="Loading squadrons">
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-14 w-full" />
     </div>
+  ) : (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <AirplaneIcon />
+        </EmptyMedia>
+        <EmptyTitle>No squadrons deployed</EmptyTitle>
+        <EmptyDescription>Start DRADIS to deploy a squadron.</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -362,14 +415,19 @@ interface Props {
   onDeploySuccess?: () => void;
 }
 
-export default function SquadronsPanel({ squadrons, isLoading, onSquadronClick, onDeploySuccess }: Props) {
+export default function SquadronsPanel({
+  squadrons,
+  isLoading,
+  onSquadronClick,
+  onDeploySuccess,
+}: Props) {
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [helmModalOpen, setHelmModalOpen] = useState(false);
   // A deploy this panel just made, held until the engine's own queue confirms
   // it. Optimistic on purpose: the API answered success, so the row is true the
   // moment it is shown, and it is retired by real state rather than by a timer.
   const [justDeployed, setJustDeployed] = useState<{ id: string; marketType: string } | null>(null);
-  
+
   // STAGED is active (pending deployment), not inactive
   // RTB belongs with the ACTIVE squadrons. "Return to base" is an operating
   // phase, not an ending: the squadron is alive and managing its open positions
@@ -377,18 +435,23 @@ export default function SquadronsPanel({ squadrons, isLoading, onSquadronClick, 
   // every market close, so grouping it with STOOD_DOWN made a healthy crypto
   // squadron drop into a collapsed drawer labeled "stood-down" every fifteen
   // minutes and reappear afterwards — routine rotation shown as a death.
-  const active   = squadrons.filter(s =>
-    s.state === 'PATROLLING' || s.state === 'DEPLOYED' || s.state === 'STAGED' || s.state === 'RTB');
-  const inactive = squadrons.filter(s => s.state === 'STOOD_DOWN');
+  const active = squadrons.filter(
+    (s) =>
+      s.state === "PATROLLING" ||
+      s.state === "DEPLOYED" ||
+      s.state === "STAGED" ||
+      s.state === "RTB",
+  );
+  const inactive = squadrons.filter((s) => s.state === "STOOD_DOWN");
 
   // Get unique assets from squadrons
-  const assets = [...new Set(squadrons.map(s => s.asset.toLowerCase()))];
+  const assets = [...new Set(squadrons.map((s) => s.asset.toLowerCase()))];
 
   // Fetch positions for all assets concurrently
   const { data: allPositions } = useSWR(
-    assets.length > 0 ? ['squadron-missions', ...assets] : null,
-    async () => await Promise.all(assets.map(asset => getOpenPositions(asset))),
-    { refreshInterval: 15_000 }
+    assets.length > 0 ? ["squadron-missions", ...assets] : null,
+    async () => await Promise.all(assets.map((asset) => getOpenPositions(asset))),
+    { refreshInterval: 15_000 },
   );
 
   // In-flight and failed deployments. Polled faster than the squadron list
@@ -396,9 +459,9 @@ export default function SquadronsPanel({ squadrons, isLoading, onSquadronClick, 
   // own queue poll is 5s, so anything slower would make the UI look stuck for
   // reasons that have nothing to do with the engine.
   const { data: deployments, mutate: mutateDeployments } = useSWR<DeploymentStatus[]>(
-    'deployment-queue',
+    "deployment-queue",
     getDeployments,
-    { refreshInterval: 3_000 }
+    { refreshInterval: 3_000 },
   );
 
   // A queued row is worth showing until its squadron exists — after that the
@@ -411,41 +474,52 @@ export default function SquadronsPanel({ squadrons, isLoading, onSquadronClick, 
   // wanted — deploying a second sports squadron beside a running one showed
   // nothing at all. A row's status goes pending → processing → active, and
   // 'active' is precisely the moment the squadron appears in the list.
-  const inFlight = (deployments ?? []).filter(d =>
-    d.status === 'pending' || d.status === 'processing');
+  const inFlight = (deployments ?? []).filter(
+    (d) => d.status === "pending" || d.status === "processing",
+  );
 
   // Failures have no later status to retire them, so they are bounded by age
   // instead — long enough that one cannot slip by between two poll ticks,
   // short enough that last week's failures do not accumulate on screen.
   const FAILURE_VISIBLE_MS = 10 * 60 * 1000;
-  const failed = (deployments ?? []).filter(d => {
-    if (d.status !== 'failed') return false;
+  const failed = (deployments ?? []).filter((d) => {
+    if (d.status !== "failed") return false;
     const at = Date.parse(d.created_at);
     return Number.isNaN(at) || Date.now() - at < FAILURE_VISIBLE_MS;
   });
   // Retire the optimistic row once the engine's queue accounts for it — either
   // it is now one of the in-flight rows (which carry the real market id), or it
   // has left pending/processing entirely, meaning the squadron exists.
-  const optimisticSettled = justDeployed !== null && (
-    inFlight.some(d => d.id === justDeployed.id) ||
-    (deployments ?? []).some(d => d.id === justDeployed.id && d.status !== 'pending' && d.status !== 'processing')
-  );
+  const optimisticSettled =
+    justDeployed !== null &&
+    (inFlight.some((d) => d.id === justDeployed.id) ||
+      (deployments ?? []).some(
+        (d) => d.id === justDeployed.id && d.status !== "pending" && d.status !== "processing",
+      ));
   useEffect(() => {
     if (optimisticSettled) setJustDeployed(null);
   }, [optimisticSettled]);
 
-  const optimisticRow: DeploymentStatus[] = justDeployed && !optimisticSettled
-    ? [{
-        id: justDeployed.id,
-        market_id: 'selecting market…',
-        market_type: justDeployed.marketType as DeploymentStatus['market_type'],
-        raptors: [], vipers: [],
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      }]
-    : [];
+  const optimisticRow: DeploymentStatus[] =
+    justDeployed && !optimisticSettled
+      ? [
+          {
+            id: justDeployed.id,
+            market_id: "selecting market…",
+            market_type: justDeployed.marketType as DeploymentStatus["market_type"],
+            raptors: [],
+            vipers: [],
+            status: "pending",
+            created_at: new Date().toISOString(),
+          },
+        ]
+      : [];
 
-  const queueRows = [...optimisticRow, ...inFlight.filter(d => d.id !== justDeployed?.id), ...failed];
+  const queueRows = [
+    ...optimisticRow,
+    ...inFlight.filter((d) => d.id !== justDeployed?.id),
+    ...failed,
+  ];
 
   // Row actions. `actingOn` disables just the row being acted on, so a slow
   // request cannot be double-submitted while leaving the others usable.
@@ -454,22 +528,36 @@ export default function SquadronsPanel({ squadrons, isLoading, onSquadronClick, 
   // clicked and nothing happened. It is named on its row now ([B43]); a
   // failed dismiss stays quiet, since the next poll re-reads real state.
   const [actErr, setActErr] = useState<{ id: string; text: string } | null>(null);
-  const act = useCallback(async (id: string, fn: (id: string) => Promise<void>, reportFailure: boolean) => {
-    setActingOn(id);
-    setActErr(null);
-    try {
-      await fn(id);
-      // Refresh at once rather than waiting for the next poll — the row is
-      // gone from the operator's point of view the moment they click.
-      await mutateDeployments();
-    } catch (e) {
-      if (reportFailure) setActErr({ id, text: `retry refused: ${e instanceof Error ? e.message : String(e)}` });
-    } finally {
-      setActingOn(null);
-    }
-  }, [mutateDeployments]);
-  const handleRetry   = useCallback((id: string) => { void act(id, retryDeployment, true); }, [act]);
-  const handleDismiss = useCallback((id: string) => { void act(id, dismissDeployment, false); }, [act]);
+  const act = useCallback(
+    async (id: string, fn: (id: string) => Promise<void>, reportFailure: boolean) => {
+      setActingOn(id);
+      setActErr(null);
+      try {
+        await fn(id);
+        // Refresh at once rather than waiting for the next poll — the row is
+        // gone from the operator's point of view the moment they click.
+        await mutateDeployments();
+      } catch (e) {
+        if (reportFailure)
+          setActErr({ id, text: `retry refused: ${e instanceof Error ? e.message : String(e)}` });
+      } finally {
+        setActingOn(null);
+      }
+    },
+    [mutateDeployments],
+  );
+  const handleRetry = useCallback(
+    (id: string) => {
+      void act(id, retryDeployment, true);
+    },
+    [act],
+  );
+  const handleDismiss = useCallback(
+    (id: string) => {
+      void act(id, dismissDeployment, false);
+    },
+    [act],
+  );
 
   // Build mission count map: asset -> count
   const missionCounts: Record<string, number> = {};
@@ -481,125 +569,117 @@ export default function SquadronsPanel({ squadrons, isLoading, onSquadronClick, 
 
   return (
     <>
-      <div className="rounded-xl border border-[#1e1e32] bg-[#0d0d1a] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e32]">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-mono font-semibold text-gray-200">✈️ CAG Registry</span>
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            CAG registry
             {!isLoading && (squadrons.length > 0 || queueRows.length > 0) && (
-              <span className="text-[10px] font-mono bg-green-500/10 text-green-400 border border-green-500/20 rounded-full px-2 py-0.5">
-                {active.length} active
-              </span>
+              <Badge variant="success">
+                <span className="font-mono tabular-nums">{active.length}</span> active
+              </Badge>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Deploy Squadron button */}
-            <button
-              onClick={() => setDeployModalOpen(true)}
-              className="flex items-center gap-1.5 text-[10px] font-mono bg-green-500/10 text-green-400 border border-green-500/20 rounded px-2 py-1 hover:bg-green-500/20 transition-colors"
-              title="Deploy a new squadron"
-            >
-              <span>+</span>
-              <span>Deploy</span>
-            </button>
+          </CardTitle>
+          <CardAction className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => setDeployModalOpen(true)}>
+              <PlusIcon data-icon="inline-start" />
+              Deploy
+            </Button>
             {/* Take the Helm: a sibling of Deploy, because both create a squadron */}
-            <button
-              onClick={() => setHelmModalOpen(true)}
-              className="flex items-center gap-1.5 text-[10px] font-mono bg-teal-500/10 text-teal-300 border border-teal-500/20 rounded px-2 py-1 hover:bg-teal-500/20 transition-colors"
-              title="Enter your own position and have the engine hold the exit"
-            >
-              <span>🧭</span>
-              <span>Take the Helm</span>
-            </button>
-          </div>
-        </div>
+            <Button variant="outline" onClick={() => setHelmModalOpen(true)}>
+              <CompassIcon data-icon="inline-start" />
+              Take the helm
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="px-0">
+          {/* Body */}
+          {isLoading || (squadrons.length === 0 && queueRows.length === 0) ? (
+            <EmptyState isLoading={isLoading} />
+          ) : (
+            <>
+              {/* Deployments the engine has not picked up yet, and ones that failed */}
+              {queueRows.length > 0 && (
+                <div>
+                  {queueRows.map((dep) => (
+                    <PendingDeploymentRow
+                      key={dep.id}
+                      dep={dep}
+                      onRetry={handleRetry}
+                      onDismiss={handleDismiss}
+                      busy={actingOn === dep.id}
+                      error={actErr?.id === dep.id ? actErr.text : undefined}
+                    />
+                  ))}
+                </div>
+              )}
 
-        {/* Body */}
-        {isLoading || (squadrons.length === 0 && queueRows.length === 0) ? (
-          <EmptyState isLoading={isLoading} />
-        ) : (
-        <>
-          {/* Deployments the engine has not picked up yet, and ones that failed */}
-          {queueRows.length > 0 && (
-            <div>
-              {queueRows.map(dep => (
-                <PendingDeploymentRow
-                  key={dep.id}
-                  dep={dep}
-                  onRetry={handleRetry}
-                  onDismiss={handleDismiss}
-                  busy={actingOn === dep.id}
-                  error={actErr?.id === dep.id ? actErr.text : undefined}
-                />
-              ))}
-            </div>
+              {/* Active squadrons */}
+              {active.length > 0 && (
+                <div>
+                  {active.map((sq) => (
+                    <SquadronRow
+                      key={sq.id}
+                      sq={sq}
+                      onClick={onSquadronClick}
+                      missionCount={missionCounts[sq.asset.toLowerCase()]}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Inactive / historical — collapsed by default if active ones are present */}
+              {inactive.length > 0 && (
+                <details className="group">
+                  <summary className="flex items-center gap-2 px-4 py-2 text-xs  text-muted-foreground cursor-pointer hover:text-muted-foreground transition-colors border-t border-border list-none">
+                    <CaretRightIcon className="size-3 group-open:rotate-90 transition-transform" />
+                    {inactive.length} stood-down
+                  </summary>
+                  {inactive.map((sq) => (
+                    <SquadronRow
+                      key={sq.id}
+                      sq={sq}
+                      onClick={onSquadronClick}
+                      missionCount={missionCounts[sq.asset.toLowerCase()]}
+                    />
+                  ))}
+                </details>
+              )}
+            </>
           )}
+        </CardContent>
+      </Card>
 
-          {/* Active squadrons */}
-          {active.length > 0 && (
-            <div>
-              {active.map(sq => (
-                <SquadronRow
-                  key={sq.id}
-                  sq={sq}
-                  onClick={onSquadronClick}
-                  missionCount={missionCounts[sq.asset.toLowerCase()]}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Inactive / historical — collapsed by default if active ones are present */}
-          {inactive.length > 0 && (
-            <details className="group">
-              <summary className="flex items-center gap-2 px-4 py-2 text-[10px] font-mono text-gray-600 cursor-pointer hover:text-gray-400 transition-colors border-t border-[#1e1e32] list-none">
-                <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
-                {inactive.length} stood-down
-              </summary>
-              {inactive.map(sq => (
-                <SquadronRow
-                  key={sq.id}
-                  sq={sq}
-                  onClick={onSquadronClick}
-                  missionCount={missionCounts[sq.asset.toLowerCase()]}
-                />
-              ))}
-            </details>
-          )}
-        </>
-      )}
-    </div>
-
-    {/* One line, and only while an intent is live. The record of resolved
+      {/* One line, and only while an intent is live. The record of resolved
         intents lives in the Helm view: intents outlive their squadrons — a Helm
         squadron retires itself once its intents are terminal — so the
         thesis-versus-outcome record cannot depend on a squadron card existing,
         but it also does not belong in the middle of the operating view. */}
-    <HelmLiveLine />
+      <HelmLiveLine />
 
-    {/* Take the Helm */}
-    <TakeTheHelmModal
-      isOpen={helmModalOpen}
-      onClose={() => setHelmModalOpen(false)}
-      onDone={() => { onDeploySuccess?.(); }}
-    />
+      {/* Take the Helm */}
+      <TakeTheHelmModal
+        isOpen={helmModalOpen}
+        onClose={() => setHelmModalOpen(false)}
+        onDone={() => {
+          onDeploySuccess?.();
+        }}
+      />
 
-    {/* Deploy Squadron Modal */}
-    <DeploySquadronModal
-      isOpen={deployModalOpen}
-      onClose={() => setDeployModalOpen(false)}
-      onDeployed={(deploymentId, marketType) => {
-        // Show the row immediately rather than waiting to discover it by poll.
-        // The queued → active window is only a few seconds and both this panel
-        // and the engine poll on their own schedules, so a purely poll-driven
-        // row can be missed entirely — which leaves the operator watching an
-        // unchanged table, the exact complaint this was meant to answer.
-        setJustDeployed({ id: deploymentId, marketType });
-        setDeployModalOpen(false);
-        onDeploySuccess?.();
-      }}
-    />
-  </>
+      {/* Deploy Squadron Modal */}
+      <DeploySquadronModal
+        isOpen={deployModalOpen}
+        onClose={() => setDeployModalOpen(false)}
+        onDeployed={(deploymentId, marketType) => {
+          // Show the row immediately rather than waiting to discover it by poll.
+          // The queued → active window is only a few seconds and both this panel
+          // and the engine poll on their own schedules, so a purely poll-driven
+          // row can be missed entirely — which leaves the operator watching an
+          // unchanged table, the exact complaint this was meant to answer.
+          setJustDeployed({ id: deploymentId, marketType });
+          setDeployModalOpen(false);
+          onDeploySuccess?.();
+        }}
+      />
+    </>
   );
 }
-
