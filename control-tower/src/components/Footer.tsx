@@ -20,6 +20,9 @@ import useSWR from "swr";
 import { getLatency } from "@/lib/api";
 import { getSetupStatus } from "@/lib/setupApi";
 import { DEMO_MODE } from "@/lib/demo";
+import { BroadcastIcon, WarningIcon } from "@phosphor-icons/react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
  * Venue latency pill — rolling engine→venue round-trip measured server-side
@@ -41,27 +44,31 @@ function LatencyMeter() {
   const ms = data.p50_ms ?? data.last_ms;
   const unreachable = !data.ok && ms === null;
 
-  const color =
+  const tone =
     unreachable || !data.ok
-      ? "text-red-400 border-red-500/30 bg-red-500/10"
+      ? "destructive"
       : ms !== null && ms < 150
-        ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+        ? "success"
         : ms !== null && ms < 400
-          ? "text-amber-300 border-amber-500/30 bg-amber-500/10"
-          : "text-red-400 border-red-500/30 bg-red-500/10";
+          ? "warning"
+          : "destructive";
 
-  const label = unreachable
-    ? `${data.venue} UNREACHABLE`
-    : `${data.venue} ${ms}ms${data.ok ? "" : " ⚠"}`;
+  const label = unreachable ? `${data.venue} UNREACHABLE` : `${data.venue} ${ms}ms`;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-3xs font-mono ${color}`}
-      title={`Round-trip from your DRADIS server to the trading venue (median of last ${data.samples} probes). High latency? Deploy your instance in a region closer to the venue.`}
-    >
-      <span>📶</span>
-      <span>{label}</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant={tone} className="gap-1 tabular-nums">
+          <BroadcastIcon aria-hidden />
+          <span>{label}</span>
+          {!data.ok && !unreachable && <WarningIcon aria-label="Probe failed" />}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>
+        Round-trip from your DRADIS server to the trading venue (median of last {data.samples}{" "}
+        probes). High latency? Deploy your instance in a region closer to the venue.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -89,22 +96,25 @@ function EngineVersion() {
   if (!data?.app_version) return null;
 
   return (
-    <span className="text-gray-600" title="DRADIS engine version running on this instance">
-      v{data.app_version}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="font-mono tabular-nums">v{data.app_version}</span>
+      </TooltipTrigger>
+      <TooltipContent>DRADIS engine version running on this instance</TooltipContent>
+    </Tooltip>
   );
 }
 
 /** Shared page footer: branding line + venue latency meter + engine version. */
 export default function Footer() {
   return (
-    <footer className="text-center text-xs text-gray-700 pb-4 font-mono space-y-2">
+    <footer className="space-y-2 pb-4 text-center text-xs text-muted-foreground">
       <div>
         <LatencyMeter />
       </div>
       <div>
-        DRADIS Control Tower Polymarket CLOB Orchestrator{" "}
-        <span className="text-gray-600">So say we all.</span> <EngineVersion />
+        DRADIS Control Tower Polymarket CLOB Orchestrator <span>So say we all. Good hunting.</span>{" "}
+        <EngineVersion />
       </div>
     </footer>
   );

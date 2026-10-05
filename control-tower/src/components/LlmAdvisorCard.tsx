@@ -27,6 +27,16 @@
 
 import { useState } from "react";
 import type { LlmRecommendationRow } from "@/lib/types";
+import { ArrowLeftIcon, ArrowRightIcon, RobotIcon } from "@phosphor-icons/react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Item, ItemActions } from "@/components/ui/item";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TONE_TEXT, signTone } from "@/components/shared";
+import { cn } from "@/lib/utils";
 
 interface Props {
   recommendations: LlmRecommendationRow[];
@@ -73,115 +83,118 @@ export default function LlmAdvisorCard({
 
   return (
     <section>
-      <div className="card px-4 py-3">
+      <Card size="sm" className="gap-0 py-0">
         {/* Summary strip */}
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="label-muted">LLM Advisor</span>
-          <span className="text-xs font-mono text-gray-600">🤖</span>
-
-          {!advisorEnabled && (
-            <span className="text-3xs font-mono bg-gray-800 text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">
-              DISABLED
-            </span>
-          )}
+        <Item size="sm" className="gap-3 px-4">
+          <RobotIcon className="size-4 text-muted-foreground" aria-hidden />
+          <span className="text-sm font-medium">LLM advisor</span>
+          {!advisorEnabled && <Badge variant="secondary">Disabled</Badge>}
 
           {isLoading ? (
-            <span className="text-xs font-mono text-gray-600">Loading…</span>
+            <Skeleton className="h-4 w-32" aria-label="Loading analysis" />
           ) : loadError ? (
-            <span className="text-xs font-mono text-red-400">couldn&apos;t load: {loadError}</span>
+            <Alert variant="destructive" className="w-auto flex-1">
+              <AlertDescription>Couldn&apos;t load: {loadError}</AlertDescription>
+            </Alert>
           ) : rec ? (
             <>
-              <span className="text-xs font-mono text-gray-400">{fmtTs(rec.ts)}</span>
-              <span className="text-3xs font-mono bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded px-1.5 py-0.5">
-                {rec.model}
-              </span>
-              <span className="text-3xs font-mono text-gray-600 hidden sm:inline">
+              <span className="text-xs text-muted-foreground tabular-nums">{fmtTs(rec.ts)}</span>
+              <Badge variant="outline">{rec.model}</Badge>
+              <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
                 {rec.trade_count} trade{rec.trade_count !== 1 ? "s" : ""}
               </span>
-              {!rec.is_current_session && (
-                <span className="text-3xs font-mono bg-gray-800 text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">
-                  PRIOR SESSION
+              {!rec.is_current_session && <Badge variant="secondary">Prior session</Badge>}
+              <span className="text-xs text-muted-foreground">
+                P&L{" "}
+                <span
+                  className={cn(
+                    "font-mono tabular-nums",
+                    TONE_TEXT[signTone(parseFloat(rec.session_pnl))],
+                  )}
+                >
+                  {parseFloat(rec.session_pnl) >= 0 ? "+" : ""}$
+                  {parseFloat(rec.session_pnl).toFixed(2)}
                 </span>
-              )}
-              <span
-                className={`text-3xs font-mono ${
-                  parseFloat(rec.session_pnl) >= 0 ? "text-green-500" : "text-red-500"
-                }`}
-              >
-                P&L {parseFloat(rec.session_pnl) >= 0 ? "+" : ""}$
-                {parseFloat(rec.session_pnl).toFixed(2)}
               </span>
             </>
           ) : (
-            <span className="text-xs font-mono text-gray-600">
-              {advisorEnabled ? "awaiting first analysis" : "disabled (ENABLE_LLM_ADVISOR)"}
+            <span className="text-xs text-muted-foreground">
+              {advisorEnabled ? "Awaiting first analysis" : "Disabled (ENABLE_LLM_ADVISOR)"}
             </span>
           )}
 
           {/* Right cluster: pending badge + expand toggle */}
-          <span className="ml-auto flex items-center gap-2">
+          <ItemActions className="ml-auto">
             {pendingCount > 0 && (
-              <button
-                onClick={onGoToActions}
-                className="text-3xs font-mono px-2 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-colors"
-                title="Review in the AI Actions view"
-              >
-                ⏳ {pendingCount} proposal{pendingCount !== 1 ? "s" : ""} pending →
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" onClick={onGoToActions}>
+                    <Badge variant="warning" className="tabular-nums">
+                      {pendingCount} proposal{pendingCount !== 1 ? "s" : ""} pending
+                    </Badge>
+                    <ArrowRightIcon data-icon="inline-end" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Review in the AI actions view</TooltipContent>
+              </Tooltip>
             )}
             {onGoToActions && pendingCount === 0 && (
-              <button
-                onClick={onGoToActions}
-                className="text-3xs font-mono text-gray-600 hover:text-gray-400 underline underline-offset-2 transition-colors"
-                title="Open the AI Actions audit trail"
-              >
-                AI actions
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="link" onClick={onGoToActions}>
+                    AI actions
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Open the AI actions audit trail</TooltipContent>
+              </Tooltip>
             )}
             {rec && (
-              <button
+              <Button
+                variant="outline"
                 onClick={() => setExpanded((v) => !v)}
-                className="text-xs px-2 py-0.5 rounded bg-surface-card border border-surface-border text-gray-400 hover:text-gray-200 transition-colors"
-                title={expanded ? "Collapse analysis" : "Read the full analysis"}
+                aria-expanded={expanded}
+                aria-label={expanded ? "Collapse analysis" : "Read the full analysis"}
               >
-                {expanded ? "collapse" : "read"}
-              </button>
+                {expanded ? "Collapse" : "Read"}
+              </Button>
             )}
-          </span>
-        </div>
+          </ItemActions>
+        </Item>
 
         {/* Expanded prose */}
         {expanded && rec && (
-          <div className="mt-3 pt-3 border-t border-surface-border">
+          <CardContent className="border-t border-border py-3">
             {total > 1 && (
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs text-gray-600 font-mono">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground tabular-nums">
                   {safeIdx + 1} / {total}
                 </span>
-                <button
+                <Button
+                  variant="outline"
+                  size="icon-sm"
                   onClick={() => setIdx((i) => Math.min(i + 1, total - 1))}
                   disabled={safeIdx >= total - 1}
-                  className="text-xs px-2 py-0.5 rounded bg-surface-card border border-surface-border text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="Older"
+                  aria-label="Older analysis"
                 >
-                  ←
-                </button>
-                <button
+                  <ArrowLeftIcon />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
                   onClick={() => setIdx((i) => Math.max(i - 1, 0))}
                   disabled={safeIdx === 0}
-                  className="text-xs px-2 py-0.5 rounded bg-surface-card border border-surface-border text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="Newer"
+                  aria-label="Newer analysis"
                 >
-                  →
-                </button>
+                  <ArrowRightIcon />
+                </Button>
               </div>
             )}
-            <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed overflow-y-auto max-h-96 scrollbar-thin">
+            <div className="max-h-96 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-foreground">
               {rec.analysis}
-            </pre>
-          </div>
+            </div>
+          </CardContent>
         )}
-      </div>
+      </Card>
     </section>
   );
 }

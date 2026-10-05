@@ -31,15 +31,26 @@ import type { LlmActionRow } from "@/lib/types";
 import { getLlmActions, approveLlmAction, rejectLlmAction } from "@/lib/api";
 import { getSetupStatus } from "@/lib/setupApi";
 
-const STATUS_STYLE: Record<string, string> = {
-  proposed: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  applied: "bg-green-500/10 text-green-400 border-green-500/20",
-  approved: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  rejected: "bg-red-500/10 text-red-400 border-red-500/20",
-  expired: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  reverted: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  failed: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-};
+import { RobotIcon, ArrowRightIcon } from "@phosphor-icons/react";
+import { SectionHeader, TONE_TEXT, signTone } from "@/components/shared";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Empty, EmptyMedia } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+const STATUS_VARIANT = {
+  proposed: "warning",
+  applied: "success",
+  approved: "success",
+  rejected: "destructive",
+  expired: "secondary",
+  reverted: "warning",
+  failed: "destructive",
+} as const;
 
 const TIER_LABEL: Record<number, string> = {
   1: "T1 recommend",
@@ -107,215 +118,200 @@ export default function AiActionsPage() {
   };
 
   return (
-    <section>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <p className="label-muted">AI Actions</p>
-          <span className="text-xs font-mono text-gray-600">🤖 config-change audit trail</span>
-        </div>
-        {/* Status filter chips */}
-        <div className="flex flex-wrap items-center gap-1">
-          {["all", "proposed", "applied", "rejected", "expired", "reverted", "failed"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={[
-                "text-3xs font-mono px-2 py-0.5 rounded border transition-colors",
-                filter === s
-                  ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
-                  : "bg-surface-card border-surface-border text-gray-500 hover:text-gray-300",
-              ].join(" ")}
-            >
-              {s}
-              {s !== "all" && counts[s] ? ` ${counts[s]}` : s === "all" ? ` ${all.length}` : ""}
-            </button>
+    <section className="space-y-4">
+      <SectionHeader title="AI actions" description="Config-change audit trail" />
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        value={filter}
+        onValueChange={(value) => {
+          if (value) setFilter(value);
+        }}
+        aria-label="Action status"
+        className="flex-wrap"
+      >
+        {["all", "proposed", "applied", "rejected", "expired", "reverted", "failed"].map(
+          (status) => (
+            <ToggleGroupItem key={status} value={status} className="capitalize">
+              {status}{" "}
+              <span className="font-mono tabular-nums text-muted-foreground">
+                {status === "all" ? all.length : counts[status] || ""}
+              </span>
+            </ToggleGroupItem>
+          ),
+        )}
+      </ToggleGroup>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {isLoading ? (
+        <div className="space-y-3" aria-busy="true" aria-label="Loading AI actions">
+          {Array.from({ length: 3 }, (_, i) => (
+            <Card key={i} size="sm">
+              <CardContent className="space-y-3">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-3 w-3/4" />
+              </CardContent>
+            </Card>
           ))}
         </div>
-      </div>
-
-      {error && (
-        <div className="mb-3 text-xs font-mono rounded-lg px-3 py-2 bg-rose-500/10 border border-rose-500/30 text-rose-300">
-          ✗ {error}
-        </div>
-      )}
-
-      <div className="card p-0 overflow-x-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-24 text-gray-600 text-sm">
-            Loading AI actions…
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-            <span className="text-3xl">🤖</span>
+      ) : rows.length === 0 ? (
+        <Card size="sm">
+          <Empty>
+            <EmptyMedia variant="icon">
+              <RobotIcon />
+            </EmptyMedia>
             {filter !== "all" ? (
-              <p className="text-sm text-gray-500">No &apos;{filter}&apos; actions.</p>
+              <p className="text-sm text-muted-foreground">No &apos;{filter}&apos; actions.</p>
             ) : setup && setup.llm_provider_ready && !setup.llm_enabled ? (
               // The most confusing state: credentials test green, and nothing
               // ever appears. Say which half is missing.
               <>
-                <p className="text-sm text-amber-300">
+                <p className="text-sm text-warning">
                   The LLM Advisor is configured but switched off.
                 </p>
-                <p className="text-xs text-gray-600 max-w-md leading-relaxed">
+                <p className="text-xs text-muted-foreground max-w-md leading-relaxed">
                   Your provider and key are working — the advisor itself is not running, so no
                   recommendations will be produced. Set{" "}
-                  <span className="text-gray-400 font-mono">Run the LLM Advisor</span> to{" "}
-                  <span className="text-gray-400 font-mono">true</span> under{" "}
-                  <span className="text-gray-400 font-mono">Setup → LLM Advisor</span>, then restart
-                  the engine.
+                  <span className="text-foreground">Run the LLM Advisor</span> to{" "}
+                  <span className="text-foreground">true</span> under{" "}
+                  <span className="text-foreground">Setup → LLM Advisor</span>, then restart the
+                  engine.
                 </p>
               </>
             ) : setup && !setup.llm_configured ? (
               // An empty table looks the same whether the advisor is running and
               // has proposed nothing, or was never set up. Say which.
               <>
-                <p className="text-sm text-gray-400">No LLM Advisor is configured.</p>
-                <p className="text-xs text-gray-600 max-w-md leading-relaxed">
+                <p className="text-sm text-foreground">No LLM Advisor is configured.</p>
+                <p className="text-xs text-muted-foreground max-w-md leading-relaxed">
                   Nothing will ever appear here until one is. The advisor is optional — it reviews
                   live trading and proposes config changes for your approval. Choose a provider
-                  under <span className="text-gray-400 font-mono">Setup → LLM Advisor</span>.
+                  under <span className="text-foreground">Setup → LLM Advisor</span>.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm text-gray-500">No AI actions yet.</p>
-                <p className="text-xs text-gray-600">
+                <p className="text-sm text-muted-foreground">No AI actions yet.</p>
+                <p className="text-xs text-muted-foreground">
                   {setup?.llm_provider
                     ? `The advisor (${LLM_LABEL[setup.llm_provider.toLowerCase()] ?? setup.llm_provider}) records every config proposal here.`
                     : "The LLM Advisor records every config proposal here."}
                 </p>
               </>
             )}
-          </div>
-        ) : (
-          <table className="w-full text-xs font-mono">
-            <thead>
-              <tr className="text-left text-gray-600 border-b border-surface-border">
-                <th className="px-3 py-2 font-normal">When</th>
-                <th className="px-3 py-2 font-normal">Squadron</th>
-                <th className="px-3 py-2 font-normal">Field</th>
-                <th className="px-3 py-2 font-normal">Change</th>
-                <th className="px-3 py-2 font-normal">Δ</th>
-                <th className="px-3 py-2 font-normal">Status</th>
-                <th className="px-3 py-2 font-normal">Tier</th>
-                <th className="px-3 py-2 font-normal">Reason / detail</th>
-                <th className="px-3 py-2 font-normal">Outcome</th>
-                <th className="px-3 py-2 font-normal"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((a) => {
-                const busy = busyIds.has(a.id);
-                return (
-                  <tr
-                    key={a.id}
-                    className="border-b border-surface-border/50 align-top hover:bg-surface-card/50"
-                  >
-                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                      {fmtTs(a.ts)}
-                      {a.ghost_mode && (
-                        <span className="ml-1 text-4xs bg-gray-800 text-gray-500 border border-gray-700 rounded px-1">
-                          GHOST
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-gray-400 whitespace-nowrap">
-                      {a.squadron_id ?? (
-                        // Written before the advisor was squadron-scoped: applied
-                        // to a config no strategy reads, so it never moved
-                        // anything live and cannot be approved now.
-                        <span
-                          className="text-gray-600"
-                          title="Pre-dates squadron-scoped advice — targets a config no strategy reads"
-                        >
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-gray-300">{a.field}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="text-gray-600">{unquote(a.from_value)}</span>
-                      <span className="text-gray-600 mx-1">→</span>
-                      <span className="text-violet-300">{unquote(a.to_value)}</span>
-                      {a.clamped && (
-                        <span className="ml-1 text-4xs bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded px-1">
-                          clamped
-                        </span>
-                      )}
-                    </td>
-                    <td
-                      className={`px-3 py-2 whitespace-nowrap ${
-                        a.delta_pct == null
-                          ? "text-gray-700"
-                          : a.delta_pct >= 0
-                            ? "text-green-500"
-                            : "text-red-500"
-                      }`}
-                    >
+          </Empty>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((a) => {
+            const busy = busyIds.has(a.id);
+            return (
+              <Card key={a.id} size="sm">
+                <CardHeader>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="font-mono text-xs">{a.field}</CardTitle>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {a.ghost_mode && <Badge variant="warning">GHOST</Badge>}
+                      {a.clamped && <Badge variant="warning">Clamped</Badge>}
+                      <Badge
+                        variant={
+                          STATUS_VARIANT[a.status as keyof typeof STATUS_VARIANT] ?? "secondary"
+                        }
+                      >
+                        {a.status}
+                      </Badge>
+                      <Badge variant="outline">{TIER_LABEL[a.tier] ?? `T${a.tier}`}</Badge>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
+                    <span className="font-mono tabular-nums">{fmtTs(a.ts)}</span>
+                    <span>
+                      Squadron{" "}
+                      <span className="font-mono">
+                        {a.squadron_id ?? (
+                          // Written before the advisor was squadron-scoped: applied
+                          // to a config no strategy reads, so it never moved
+                          // anything live and cannot be approved now.
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span tabIndex={0}>—</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Pre-dates squadron-scoped advice — targets a config no strategy reads
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </span>
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 bg-muted px-3 py-2 font-mono tabular-nums">
+                    <span className="break-all text-muted-foreground line-through">
+                      {unquote(a.from_value)}
+                    </span>
+                    <ArrowRightIcon
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                      aria-label="changes to"
+                    />
+                    <span className="break-all text-foreground">{unquote(a.to_value)}</span>
+                    <span className="ml-auto text-muted-foreground">
+                      Δ{" "}
                       {a.delta_pct == null
                         ? "—"
                         : `${a.delta_pct >= 0 ? "+" : ""}${(a.delta_pct * 100).toFixed(1)}%`}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`text-3xs border rounded px-1.5 py-0.5 ${STATUS_STYLE[a.status] ?? STATUS_STYLE.expired}`}
-                      >
-                        {a.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                      {TIER_LABEL[a.tier] ?? `T${a.tier}`}
-                    </td>
-                    <td className="px-3 py-2 text-gray-500 max-w-96">
-                      <span title={a.reason}>{a.reason}</span>
-                      {a.status_detail && (
-                        <p className="text-3xs text-gray-600 mt-0.5" title={a.status_detail}>
-                          {a.status_detail}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {a.outcome_score == null ? (
-                        <span className="text-gray-700">—</span>
-                      ) : (
+                    </span>
+                  </div>
+                  <p className="text-pretty text-muted-foreground">{a.reason}</p>
+                  {a.status_detail && (
+                    <p className="text-xs text-muted-foreground">{a.status_detail}</p>
+                  )}
+                </CardContent>
+                <CardFooter className="flex-wrap justify-between gap-3 border-t border-border">
+                  <div className="text-muted-foreground">
+                    Outcome{" "}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                         <span
-                          className={a.outcome_score >= 0 ? "text-green-400" : "text-red-400"}
-                          title={a.outcome_detail ?? ""}
+                          tabIndex={0}
+                          className={`font-mono tabular-nums ${TONE_TEXT[signTone(a.outcome_score)]}`}
                         >
-                          {a.outcome_score >= 0 ? "+" : ""}
-                          {a.outcome_score.toFixed(2)}
+                          {a.outcome_score == null
+                            ? "—"
+                            : `${a.outcome_score >= 0 ? "+" : ""}${a.outcome_score.toFixed(2)}`}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {a.status === "proposed" && (
-                        <span className="flex gap-1">
-                          <button
-                            onClick={() => run(a.id, approveLlmAction)}
-                            disabled={busy}
-                            className="px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 disabled:opacity-30 transition-colors"
-                          >
-                            {busy ? "…" : "apply"}
-                          </button>
-                          <button
-                            onClick={() => run(a.id, rejectLlmAction)}
-                            disabled={busy}
-                            className="px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-30 transition-colors"
-                          >
-                            reject
-                          </button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <p className="mt-2 text-3xs font-mono text-gray-600">
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {a.outcome_detail || "No outcome detail recorded"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {a.status === "proposed" && (
+                    <div className="flex gap-2">
+                      <Button onClick={() => run(a.id, approveLlmAction)} disabled={busy}>
+                        {busy ? "Applying…" : "Apply"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => run(a.id, rejectLlmAction)}
+                        disabled={busy}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </CardFooter>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
         Rejected and reverted actions become negative few-shot examples in future advisor prompts;
         applied actions are outcome-scored against post-apply P&L.
       </p>

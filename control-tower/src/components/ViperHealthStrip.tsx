@@ -19,6 +19,10 @@
 import useSWR from "swr";
 import { getVipersStatus } from "@/lib/api";
 import { isTroubled } from "@/components/ViperCard";
+import { Card } from "@/components/ui/card";
+import { Item } from "@/components/ui/item";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { StatusDot } from "@/components/shared";
 
 /**
  * One-line CAG-level rollup: "N/N vipers alive across all squadrons".
@@ -73,23 +77,31 @@ export function ViperHealthStrip() {
 
   const ok = troubled === 0;
   return (
-    <div
-      className={`card px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono ${ok ? "text-gray-500" : "text-red-400"}`}
-      title="Per-viper detail: click a squadron below → Viper Layer"
-    >
-      <span>{ok ? "🟢" : "🔴"}</span>
-      <span className={ok ? "text-gray-400" : ""}>
-        {alive.length}/{active.length} vipers alive
-        {squadrons > 1 ? ` across ${squadrons} squadrons` : ""}
-        {/* Stated rather than silently subtracted, so the tally reconciles with
+    <Card size="sm" className="py-0">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Item size="sm" className="gap-x-3 gap-y-1 px-4">
+            <StatusDot tone={ok ? "success" : "destructive"} />
+            <span className="text-foreground tabular-nums">
+              {alive.length}/{active.length} vipers alive
+              {squadrons > 1 ? ` across ${squadrons} squadrons` : ""}
+              {/* Stated rather than silently subtracted, so the tally reconciles with
             the viper cards an operator can count on screen. */}
-        {disabled > 0 ? ` · ${disabled} disabled` : ""}
-        {waiting > 0 ? ` · ${waiting} waiting for a market` : ""}
-      </span>
-      {!ok && <span>{troubled} stale/error — check squadron detail</span>}
-      {ok && reasons.length > 0 && (
-        <span className="text-gray-600 truncate">holding: {reasons.join(" · ")}</span>
-      )}
-    </div>
+              {disabled > 0 ? ` · ${disabled} disabled` : ""}
+              {waiting > 0 ? ` · ${waiting} waiting for a market` : ""}
+            </span>
+            {!ok && (
+              <span className="text-destructive tabular-nums">
+                {troubled} stale/error — check squadron detail
+              </span>
+            )}
+            {ok && reasons.length > 0 && (
+              <span className="truncate text-muted-foreground">holding: {reasons.join(" · ")}</span>
+            )}
+          </Item>
+        </TooltipTrigger>
+        <TooltipContent>Per-viper detail: click a squadron below → Viper layer</TooltipContent>
+      </Tooltip>
+    </Card>
   );
 }

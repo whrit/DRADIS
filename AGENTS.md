@@ -46,7 +46,7 @@ Venue WS orderbook → LocalBook/PriceState ─┴→ StrategyContext
 | `src/api/` | `server.rs` (REST handlers), `setup.rs` (Setup wizard, `MANAGED_KEYS`, `RAPTOR_SOURCES`), `config_schema.rs` |
 | `src/helpers/` | db, dynamic_config, balance, LLM advisor/policy/patch, redact, watchdog, notifications, and similar |
 | `src/tasks/` | Background jobs (cleanup, collateral sweep, market monitor, venue income) |
-| `control-tower/` | Next.js 15 / React 19 / Tailwind 3 dashboard |
+| `control-tower/` | Next.js 15 / React 19 / Tailwind v4 / shadcn (radix-mira) dashboard. `src/components/ui/` = shadcn primitives (add via `pnpm dlx shadcn@latest add <name>`), `src/components/shared.tsx` = app-level patterns (`StatusDot`, `SectionHeader`, `Stat`, `TONE_TEXT`/`signTone`), `src/components/shell/AppHeader.tsx` = header + nav + GHOST/LIVE toggle, `src/app/page.tsx` = hash router + Overview |
 | `integrations/` | `mcp/server.js` (read-only MCP server; `apiGet()` hardcodes GET) and `openclaw/SKILL.md` |
 | `tools/` | Ops/analysis scripts (see `tools/README.md`) |
 | `deploy/` | `entrypoint.sh` picks the venue binary at runtime (`data/venue` > `$DRADIS_VENUE` > single baked venue > intl). `ami/` holds the Marketplace AMI build. |
@@ -124,7 +124,8 @@ DRADIS_VENUES="intl us kalshi" docker build -t dradis .
 
 ## Runtime/Tooling Preferences
 - **Rust:** stable toolchain, edition 2021, tokio multi-threaded runtime.
-- **Control Tower:** **pnpm**, pinned via `packageManager` in `package.json` (use corepack). `pnpm-lock.yaml` and `pnpm-workspace.yaml` are tracked; Docker runs `pnpm install --frozen-lockfile`. Dependency overrides go in `pnpm-workspace.yaml`, not `package.json`. Lint is oxlint with `shadcn/no-arbitrary-values`: use theme tokens from `tailwind.config.ts` (`surface-*`, `text-2xs`…`text-5xs`), never `[#hex]`/`[Npx]`. It builds standalone output, and `NEXT_DIST_DIR` separates dev instances. Don't use Next `rewrites()` for the API: they are build-time only.
+- **Control Tower:** **pnpm**, pinned via `packageManager` in `package.json` (use corepack). `pnpm-lock.yaml` and `pnpm-workspace.yaml` are tracked; Docker runs `pnpm install --frozen-lockfile`. Dependency overrides go in `pnpm-workspace.yaml`, not `package.json`. It builds standalone output, and `NEXT_DIST_DIR` separates dev instances. Don't use Next `rewrites()` for the API: they are build-time only.
+- **Control Tower UI conventions:** dark-only theme in `src/app/globals.css` (no `tailwind.config.ts`). Colors only via semantic tokens: `background/card/popover/muted/accent/secondary/border/input`, `foreground/muted-foreground`, `primary` (the one accent), `success` (profit/healthy/live), `destructive` (loss/error), `warning` (ghost/stale/pending), `chart-1..5` (categories, chart series). oxlint enforces `shadcn/no-raw-colors`, `no-arbitrary-values`, `no-unknown-classes` (off inside `components/ui/**`); charts use `var(--chart-N)` etc., never hex. Icons: Phosphor `*Icon` exports only (`@phosphor-icons/react`), `fill` weight marks the active state. `font-mono` + `tabular-nums` for numbers/IDs/logs only, Geist sans for UI text. Charts: Recharts inside shadcn `ChartContainer`.
 - **Python 3** for `tools/` scripts, stdlib-only style, DB opened read-only (`mode=ro`).
 - **Never commit:**
   - Real-environment files: `.env`, `src/config.rs`, `data/`, `data-*/`, `logs/`.

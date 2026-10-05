@@ -16,11 +16,35 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useId } from "react";
 import useSWR from "swr";
 import type { DynamicConfig, ConfigFieldSchema } from "@/lib/types";
 import { getConfigSchema, refusalText } from "@/lib/api";
 import { DEMO_MODE } from "@/lib/demo";
+import { WarningIcon } from "@phosphor-icons/react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 
 // ── Advanced config modal ─────────────────────────────────────────────────────
 //
@@ -52,6 +76,7 @@ function clamp(n: number, min: number | null, max: number | null): number {
 /// exit accounting — can be rendered with the same clamping, units and patch
 /// path rather than a second, divergent editor.
 export function AdvancedRow({ field, config, onPatch, disabled }: RowProps) {
+  const id = useId();
   const stored = String((config as unknown as Record<string, unknown>)[field.key] ?? "");
   const [draft, setDraft] = useState(stored);
   const [saving, setSaving] = useState(false);
@@ -146,50 +171,51 @@ export function AdvancedRow({ field, config, onPatch, disabled }: RowProps) {
     .join(" · ");
 
   return (
-    <div className="flex items-start justify-between gap-3 py-2 border-b border-surface-border last:border-0">
-      <div className="min-w-0 flex-1">
+    <Field
+      orientation="horizontal"
+      className="flex-col items-start border-b border-border py-3 last:border-0 sm:flex-row"
+      data-invalid={Boolean(error?.startsWith("not saved"))}
+    >
+      <FieldContent className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-300 truncate">{field.label}</span>
-          <span className="text-3xs font-mono text-gray-600 uppercase">{field.type}</span>
+          <FieldLabel htmlFor={id} className="text-xs">
+            {field.label}
+          </FieldLabel>
+          <Badge variant="secondary" className="text-2xs">
+            {field.type}
+          </Badge>
         </div>
-        <p className="text-2xs text-gray-500 leading-snug mt-0.5">{field.description}</p>
-        {(bounds || error) && (
-          <p className="text-3xs font-mono mt-0.5">
-            {bounds && <span className="text-gray-600">{bounds}</span>}
-            {error && (
-              <span
-                className={`${error.startsWith("not saved") ? "text-red-400" : "text-amber-400"} ml-2`}
-              >
-                {error}
-              </span>
-            )}
-          </p>
+        <FieldDescription id={`${id}-description`}>{field.description}</FieldDescription>
+        {bounds && (
+          <p className="font-mono text-2xs tabular-nums text-muted-foreground">{bounds}</p>
         )}
-      </div>
-      <div className="flex items-center gap-2 shrink-0 pt-0.5">
-        {field.type === "bool" ? (
-          <button
-            onClick={toggleBool}
-            disabled={disabled || saving}
-            className={[
-              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-              stored === "true" ? "bg-green-500" : "bg-gray-700",
-              disabled || saving ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-            ].join(" ")}
+        {error && (
+          <FieldError
+            className={error.startsWith("not saved") ? "text-destructive" : "text-warning"}
           >
-            <span
-              className={[
-                "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
-                stored === "true" ? "translate-x-[18px]" : "translate-x-[3px]",
-              ].join(" ")}
-            />
-          </button>
+            {error}
+          </FieldError>
+        )}
+      </FieldContent>
+      <div className="flex min-w-0 max-w-full items-center gap-2 sm:shrink-0">
+        {field.type === "bool" ? (
+          <Switch
+            id={id}
+            checked={stored === "true"}
+            onCheckedChange={toggleBool}
+            disabled={disabled || saving}
+            aria-describedby={`${id}-description`}
+          />
         ) : (
           <>
-            <input
+            <Input
+              id={id}
+              aria-describedby={`${id}-description`}
               type={field.type === "string" ? "text" : "number"}
               className={
-                field.type === "string" ? "input-field w-72 font-mono text-2xs" : "input-field w-24"
+                field.type === "string"
+                  ? "w-full font-mono text-xs sm:w-64"
+                  : "w-28 font-mono tabular-nums"
               }
               value={draft}
               disabled={disabled || saving}
@@ -207,11 +233,14 @@ export function AdvancedRow({ field, config, onPatch, disabled }: RowProps) {
                 }
               }}
             />
-            {field.unit && <span className="text-3xs text-gray-600 w-9">{field.unit}</span>}
+            {field.unit && (
+              <span className="shrink-0 text-xs text-muted-foreground">{field.unit}</span>
+            )}
           </>
         )}
+        {saving && <Spinner className="size-3.5" />}
       </div>
-    </div>
+    </Field>
   );
 }
 
@@ -239,58 +268,60 @@ export default function AdvancedConfigModal({
     revalidateOnFocus: false,
   });
 
-  // Close on Escape.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const fields = schema.filter((f) => f.group === viperName && f.advanced);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={onClose}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div
-        className="card w-full max-w-lg max-h-80vh flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+      {/* Fields save on blur. Radix dismisses on pointerdown, before the focused
+          input would blur, so blur it first: an edit typed and then clicked away
+          from is saved, as it was with the old backdrop. */}
+      <DialogContent
+        className="flex max-h-dvh flex-col sm:max-w-2xl"
+        onPointerDownOutside={() => (document.activeElement as HTMLElement | null)?.blur()}
+        onEscapeKeyDown={() => (document.activeElement as HTMLElement | null)?.blur()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-surface-border">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white">{viperName} — Advanced</h2>
-            <p className="text-2xs text-gray-500">
-              Live-edited; clamped to safe ranges. Saves immediately.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-white transition-colors text-lg leading-none px-2"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="px-5 py-2 overflow-y-auto">
+        <DialogHeader className="pr-6">
+          <DialogTitle>{viperName} — advanced</DialogTitle>
+          <DialogDescription>
+            Live-edited; clamped to safe ranges. Saves immediately.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 space-y-3 overflow-y-auto">
           {!enabled && (
-            <div className="my-2 text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">
-              This viper is disabled — changes are saved but take effect only when enabled.
+            <Alert variant="warning">
+              <WarningIcon />
+              <AlertDescription>
+                This viper is disabled — changes are saved but take effect only when enabled.
+              </AlertDescription>
+            </Alert>
+          )}
+          {isLoading && (
+            <div className="space-y-4 py-3" aria-label="Loading schema" aria-busy="true">
+              {[0, 1, 2].map((key) => (
+                <div key={key} className="space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              ))}
             </div>
           )}
-          {isLoading && <p className="py-6 text-center text-xs text-gray-500">Loading schema…</p>}
           {error && (
-            <p className="py-6 text-center text-xs text-red-400">Failed to load config schema.</p>
+            <Alert variant="destructive">
+              <WarningIcon />
+              <AlertDescription>Failed to load config schema.</AlertDescription>
+            </Alert>
           )}
           {!isLoading && !error && fields.length === 0 && (
-            <p className="py-6 text-center text-xs text-gray-500">
-              No advanced settings for this viper.
-            </p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyDescription>No advanced settings for this viper.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
           {fields.map((f) => (
             <AdvancedRow
@@ -302,17 +333,12 @@ export default function AdvancedConfigModal({
             />
           ))}
         </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-surface-border flex justify-end">
-          <button
-            onClick={onClose}
-            className="text-xs px-3 py-1.5 rounded bg-surface-hover text-gray-300 hover:bg-surface-active transition-colors"
-          >
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
             Done
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -45,13 +45,25 @@ import {
   HelmApiError,
 } from "@/lib/api";
 import { MarketBrowser } from "./DeploySquadronModal";
+import { CoinsIcon, FootballIcon, CheckSquareIcon, CompassIcon } from "@phosphor-icons/react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Field, FieldLabel, FieldDescription, FieldError } from "./ui/field";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { Checkbox } from "./ui/checkbox";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import { Spinner } from "./ui/spinner";
 
 type Step = "market" | "deploying" | "form" | "critique" | "done";
 
-const BROWSABLE: { type: MarketType; icon: string; label: string }[] = [
-  { type: "crypto", icon: "🪙", label: "Crypto" },
-  { type: "sports", icon: "🏈", label: "Sports" },
-  { type: "politics", icon: "🗳️", label: "Politics" },
+const BROWSABLE = [
+  { type: "crypto" as const, icon: CoinsIcon, label: "Crypto" },
+  { type: "sports" as const, icon: FootballIcon, label: "Sports" },
+  { type: "politics" as const, icon: CheckSquareIcon, label: "Politics" },
 ];
 
 /** How long to wait for the queued deploy to become a live squadron. A deploy
@@ -103,9 +115,7 @@ const EMPTY_FORM: FormState = {
   catastrophic_floor_pct: "",
 };
 
-const inputCls =
-  "w-full bg-surface-base border border-surface-border rounded px-2 py-1.5 text-xs font-mono text-gray-200 focus:outline-none focus:border-teal-500/50";
-const labelCls = "block text-3xs font-mono uppercase tracking-wide text-gray-500 mb-1";
+const inputCls = "w-full font-mono tabular-nums";
 
 function orNull(s: string): string | null {
   const t = s.trim();
@@ -342,69 +352,68 @@ export default function TakeTheHelmModal({ isOpen, onClose, onDone }: Props) {
   const canAcknowledge = !busy && readCritique && (critique != null || critiqueWaitedOut);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-sunken rounded-xl border border-surface-border shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-92vh flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🧭</span>
-            <h2 className="text-sm font-mono font-semibold text-gray-200">Take the Helm</h2>
-            <span className="text-3xs font-mono text-gray-500 ml-2">
-              {step === "market" && "1 · market"}
-              {step === "deploying" && "1 · deploying"}
-              {step === "form" && "2 · conviction"}
-              {step === "critique" && "3 · critique and acknowledgement"}
-              {step === "done" && "4 · entered"}
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-300 transition-colors p-1"
-            aria-label="Close"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <div className="px-5 py-4 space-y-4 overflow-y-auto">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        className="sm:max-w-2xl max-h-full overflow-hidden flex flex-col"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="pr-8">
+          <DialogTitle className="flex items-center gap-2">
+            <CompassIcon className="size-4 text-primary" />
+            Take the helm
+          </DialogTitle>
+          <DialogDescription>
+            {step === "market" && "1 · Market"}
+            {step === "deploying" && "1 · Deploying"}
+            {step === "form" && "2 · Conviction"}
+            {step === "critique" && "3 · Critique and acknowledgement"}
+            {step === "done" && "4 · Entered"}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 overflow-y-auto min-h-0">
           {error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-mono text-red-300">
-              {error}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           {/* ── Step 1: market ─────────────────────────────────────────────── */}
           {(step === "market" || step === "deploying") && (
             <>
-              <p className="text-xs font-mono text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Pick the market. The squadron you deploy carries one viper, Helm, and no Raptors —
                 whatever the venue files the market under, it resolves to class{" "}
-                <span className="text-teal-300">helm</span>. The posture you state next is the whole
+                <span className="text-primary">helm</span>. The posture you state next is the whole
                 exit plan.
               </p>
-              <div className="flex gap-2">
+              <ToggleGroup
+                type="single"
+                value={browseType}
+                onValueChange={(value) => {
+                  if (value) setBrowseType(value as MarketType);
+                }}
+                variant="outline"
+                className="w-full"
+              >
                 {BROWSABLE.map((b) => (
-                  <button
+                  <ToggleGroupItem
                     key={b.type}
-                    onClick={() => setBrowseType(b.type)}
+                    value={b.type}
                     disabled={step === "deploying"}
-                    className={`flex-1 rounded border px-3 py-2 text-xs font-mono transition-colors ${
-                      browseType === b.type
-                        ? "border-teal-500/50 bg-teal-500/10 text-teal-200"
-                        : "border-surface-border text-gray-400 hover:bg-white/[0.02]"
-                    }`}
+                    className="flex-1"
                   >
-                    {b.icon} {b.label}
-                  </button>
+                    <b.icon />
+                    {b.label}
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
               <MarketBrowser
                 markets={markets}
                 selected={selectedMarket}
@@ -412,63 +421,71 @@ export default function TakeTheHelmModal({ isOpen, onClose, onDone }: Props) {
                 loading={loadingMarkets}
               />
               {selected && (
-                <div className="rounded border border-surface-border bg-surface-base px-3 py-2 text-2xs font-mono text-gray-400 space-y-1">
+                <Card size="sm" className="px-3 gap-1 text-xs text-muted-foreground">
                   <p>
                     DRADIS files this market as{" "}
-                    <span className="text-gray-200">{selected.market_class}</span>; a{" "}
+                    <span className="text-foreground">{selected.market_class}</span>; a{" "}
                     {selected.market_class} squadron would carry that class&apos;s Raptors and
                     vipers.
                   </p>
                   <p>
-                    Deployed as Helm it resolves to class{" "}
-                    <span className="text-teal-300">helm</span> — one viper, no Raptors. Closes{" "}
-                    {new Date(selected.end_date).toLocaleString()}.
+                    Deployed as Helm it resolves to class <span className="text-primary">helm</span>{" "}
+                    — one viper, no Raptors. Closes {new Date(selected.end_date).toLocaleString()}.
                   </p>
-                </div>
+                </Card>
               )}
-              <div>
-                <label className={labelCls}>Squadron name (optional)</label>
-                <input
+              <Field>
+                <FieldLabel htmlFor="helm-name">Squadron name (optional)</FieldLabel>
+                <Input
+                  id="helm-name"
                   className={inputCls}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. btc-3pm-fade"
                   disabled={step === "deploying"}
                 />
-              </div>
-              <button
+              </Field>
+              <Button
                 onClick={deploy}
                 disabled={!selectedMarket || busy || step === "deploying"}
-                className="w-full rounded border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-xs font-mono text-teal-200 hover:bg-teal-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full"
               >
                 {step === "deploying" ? "Deploying the Helm squadron…" : "Deploy Helm squadron"}
-              </button>
+              </Button>
             </>
           )}
 
           {/* ── Step 2: conviction form ────────────────────────────────────── */}
           {step === "form" && squadronId && (
             <>
-              <p className="text-xs font-mono text-gray-400">
-                Squadron <span className="text-teal-300">{squadronId}</span> is patrolling. State
-                the conviction. The exit posture below is what the engine enforces; the prose is
-                kept beside it and is never parsed.
+              <p className="text-xs text-muted-foreground">
+                Squadron <span className="font-mono text-primary">{squadronId}</span> is patrolling.
+                State the conviction. The exit posture below is what the engine enforces; the prose
+                is kept beside it and is never parsed.
               </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Side</label>
-                  <select
-                    className={inputCls}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field>
+                  <FieldLabel htmlFor="helm-side">Side</FieldLabel>
+                  <Select
                     value={form.side}
-                    onChange={(e) => set("side", e.target.value as "YES" | "NO")}
+                    onValueChange={(value) => set("side", value as "YES" | "NO")}
                   >
-                    <option value="YES">YES</option>
-                    <option value="NO">NO</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Confidence (probability, strictly inside 0–1)</label>
-                  <input
+                    <SelectTrigger id="helm-side" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {" "}
+                      <SelectItem value="YES">YES</SelectItem>
+                      <SelectItem value="NO">NO</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="helm-confidence">
+                    Confidence (probability, strictly inside 0–1)
+                  </FieldLabel>
+                  <Input
+                    id="helm-confidence"
                     className={inputCls}
                     type="number"
                     min="0.01"
@@ -477,262 +494,270 @@ export default function TakeTheHelmModal({ isOpen, onClose, onDone }: Props) {
                     value={form.confidence}
                     onChange={(e) => set("confidence", e.target.value)}
                   />
-                </div>
+                </Field>
               </div>
-              <div>
-                <label className={labelCls}>Thesis — what you believe and why</label>
-                <textarea
-                  className={`${inputCls} h-20`}
+              <Field>
+                <FieldLabel htmlFor="helm-thesis">Thesis — what you believe and why</FieldLabel>
+                <Textarea
+                  id="helm-thesis"
+                  className="h-20"
                   value={form.thesis}
                   onChange={(e) => set("thesis", e.target.value)}
                 />
-              </div>
-              <div>
-                <label className={labelCls}>What would make me wrong</label>
-                <textarea
-                  className={`${inputCls} h-16`}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="helm-falsification">What would make me wrong</FieldLabel>
+                <Textarea
+                  id="helm-falsification"
+                  className="h-16"
                   value={form.falsification}
                   onChange={(e) => set("falsification", e.target.value)}
                   placeholder="The observable condition that would show the thesis wrong"
                 />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className={labelCls}>Horizon</label>
-                  <select
-                    className={inputCls}
+              </Field>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field>
+                  <FieldLabel htmlFor="helm-horizon">Horizon</FieldLabel>
+                  <Select
                     value={form.horizon}
-                    onChange={(e) => set("horizon", e.target.value as "expiry" | "sooner")}
+                    onValueChange={(value) => set("horizon", value as "expiry" | "sooner")}
                   >
-                    <option value="expiry">Ride to expiry</option>
-                    <option value="sooner">Expect to exit sooner</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Entry</label>
-                  <select
-                    className={inputCls}
+                    <SelectTrigger id="helm-horizon" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {" "}
+                      <SelectItem value="expiry">Ride to expiry</SelectItem>
+                      <SelectItem value="sooner">Expect to exit sooner</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="helm-entry_kind">Entry</FieldLabel>
+                  <Select
                     value={form.entry_kind}
-                    onChange={(e) => set("entry_kind", e.target.value as "taker" | "resting")}
+                    onValueChange={(value) => set("entry_kind", value as "taker" | "resting")}
                   >
-                    <option value="taker">Taker (buy the ask now)</option>
-                    <option value="resting">Resting bid (post-only)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Size (USDC)</label>
-                  <input
+                    <SelectTrigger id="helm-entry_kind" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {" "}
+                      <SelectItem value="taker">Taker (buy the ask now)</SelectItem>
+                      <SelectItem value="resting">Resting bid (post-only)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="helm-size_usdc">Size (USDC)</FieldLabel>
+                  <Input
+                    id="helm-size_usdc"
                     className={inputCls}
                     value={form.size_usdc}
                     onChange={(e) => set("size_usdc", e.target.value)}
                   />
-                </div>
+                </Field>
               </div>
               {form.entry_kind === "resting" && (
-                <div>
-                  <label className={labelCls}>Resting bid price (below the ask)</label>
-                  <input
+                <Field>
+                  <FieldLabel htmlFor="helm-entry_limit_price">
+                    Resting bid price (below the ask)
+                  </FieldLabel>
+                  <Input
+                    id="helm-entry_limit_price"
                     className={inputCls}
                     value={form.entry_limit_price}
                     onChange={(e) => set("entry_limit_price", e.target.value)}
                     placeholder="0.40"
                   />
-                </div>
+                </Field>
               )}
-              <div className="rounded border border-surface-border bg-surface-base p-3 space-y-3">
-                <p className="text-3xs font-mono uppercase tracking-wide text-teal-400">
+              <Card size="sm" className="px-3 gap-3">
+                <p className="text-xs text-primary">
                   Exit posture — the engine enforces exactly this
                 </p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className={labelCls}>Stop price</label>
-                    <input
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="helm-stop_price">Stop price</FieldLabel>
+                    <Input
+                      id="helm-stop_price"
                       className={inputCls}
                       value={form.stop_price}
                       onChange={(e) => set("stop_price", e.target.value)}
                       placeholder="below the bid"
                       disabled={form.hold_to_settlement}
                     />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Take-profit price</label>
-                    <input
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="helm-take_profit_price">Take-profit price</FieldLabel>
+                    <Input
+                      id="helm-take_profit_price"
                       className={inputCls}
                       value={form.take_profit_price}
                       onChange={(e) => set("take_profit_price", e.target.value)}
                       placeholder="above the ask"
                     />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Catastrophic floor (fraction of entry)</label>
-                    <input
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="helm-catastrophic_floor_pct">
+                      Catastrophic floor (fraction of entry)
+                    </FieldLabel>
+                    <Input
+                      id="helm-catastrophic_floor_pct"
                       className={inputCls}
                       value={form.catastrophic_floor_pct}
                       onChange={(e) => set("catastrophic_floor_pct", e.target.value)}
                       placeholder="0.50"
                     />
-                  </div>
+                  </Field>
                 </div>
-                <div className="grid grid-cols-2 gap-3 items-end">
-                  <div>
-                    <label className={labelCls}>Time limit (before the market&apos;s close)</label>
-                    <input
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                  <Field>
+                    <FieldLabel htmlFor="helm-time_limit_at">
+                      Time limit (before the market&apos;s close)
+                    </FieldLabel>
+                    <Input
+                      id="helm-time_limit_at"
                       className={inputCls}
                       type="datetime-local"
                       value={form.time_limit_at}
                       onChange={(e) => set("time_limit_at", e.target.value)}
                     />
-                  </div>
-                  <label className="flex items-center gap-2 text-xs font-mono text-gray-300 pb-1.5">
-                    <input
-                      type="checkbox"
+                  </Field>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="helm-hold"
                       checked={form.hold_to_settlement}
-                      onChange={(e) => {
-                        set("hold_to_settlement", e.target.checked);
-                        if (e.target.checked) set("stop_price", "");
+                      onCheckedChange={(value) => {
+                        const checked = value === true;
+                        set("hold_to_settlement", checked);
+                        if (checked) set("stop_price", "");
                       }}
                     />
-                    Hold to settlement (no price stop; the floor is the insurance)
-                  </label>
+                    <FieldLabel htmlFor="helm-hold">
+                      Hold to settlement (no price stop; the floor is the insurance)
+                    </FieldLabel>
+                  </Field>
                 </div>
-                <p className="text-3xs font-mono text-gray-500">
+                <FieldDescription>
                   A posture must name an exit: a stop, a take-profit, a time limit, or hold to
                   settlement. The validator checks each against the live book and names every rule
                   it fails.
-                </p>
-              </div>
+                </FieldDescription>
+              </Card>
               {violations.length > 0 && (
-                <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                  <p className="text-3xs font-mono uppercase tracking-wide text-amber-300 mb-1">
-                    Refused — fix each of these
-                  </p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    {violations.map((v, i) => (
-                      <li key={i} className="text-xs font-mono text-amber-200">
-                        {v}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <Alert variant="warning">
+                  <AlertDescription>
+                    <p className="text-xs text-warning mb-1">Refused — fix each of these</p>
+                    <FieldError errors={violations.map((message) => ({ message }))} />
+                  </AlertDescription>
+                </Alert>
               )}
-              <button
-                onClick={submit}
-                disabled={busy}
-                className="w-full rounded border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-xs font-mono text-teal-200 hover:bg-teal-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+              <Button onClick={submit} disabled={busy} className="w-full">
+                {busy && <Spinner data-icon="inline-start" />}
                 {busy ? "Submitting…" : "Submit conviction"}
-              </button>
+              </Button>
             </>
           )}
 
           {/* ── Step 3: critique and acknowledgement ───────────────────────── */}
           {step === "critique" && detail && (
             <>
-              <div className="rounded border border-surface-border bg-surface-base px-3 py-2 text-xs font-mono text-gray-300 space-y-1">
+              <Card size="sm" className="px-3 gap-1 text-xs tabular-nums">
                 <p>
-                  Intent <span className="text-teal-300">#{detail.intent.id}</span> on{" "}
+                  Intent <span className="font-mono text-primary">#{detail.intent.id}</span> on{" "}
                   {detail.intent.market_name} — {detail.intent.side}, confidence{" "}
                   {(detail.intent.first.confidence * 100).toFixed(0)}%, status{" "}
                   {detail.intent.status}
                   {detail.intent.ghost ? " (ghost)" : ""}.
                 </p>
-                <p className="text-gray-400">
+                <p className="text-muted-foreground">
                   Stored as first written. Any edit after reading the critique is a new version; the
                   first never changes.
                 </p>
-              </div>
-              <div className="rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-                <p className="text-3xs font-mono uppercase tracking-wide text-amber-300 mb-1">
-                  Fee verdict
-                </p>
-                <p className="text-xs font-mono text-amber-100">
-                  {detail.intent.fee_verdict ?? "—"}
-                </p>
-              </div>
-              <div className="rounded border border-indigo-500/20 bg-indigo-500/5 px-3 py-2">
-                <p className="text-3xs font-mono uppercase tracking-wide text-indigo-300 mb-1">
+              </Card>
+              <Alert variant="warning">
+                <AlertDescription>
+                  <p className="text-sm font-medium text-warning mb-1">Fee verdict</p>
+                  <p className="text-xs text-warning">{detail.intent.fee_verdict ?? "—"}</p>
+                </AlertDescription>
+              </Alert>
+              <Card size="sm" className="px-3 gap-2">
+                <p className="text-sm font-medium mb-1">
                   Critique{" "}
                   {detail.intent.critique_model && !critiqueUnavailable
                     ? `· ${detail.intent.critique_model}`
                     : ""}
                 </p>
                 {critique == null && !critiqueWaitedOut && (
-                  <p className="text-xs font-mono text-gray-400 animate-pulse">
+                  <p className="text-xs text-muted-foreground animate-pulse">
                     Reading your reasoning… (it sees the thesis, the probability, the horizon, the
                     falsification, the market name and the current price — nothing else)
                   </p>
                 )}
                 {critique == null && critiqueWaitedOut && (
-                  <p className="text-xs font-mono text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     No critique arrived in time. Acknowledging records it as unavailable; the trade
                     proceeds either way.
                   </p>
                 )}
                 {critique != null && (
                   <p
-                    className={`text-xs font-mono whitespace-pre-wrap ${critiqueUnavailable ? "text-gray-400" : "text-indigo-100"}`}
+                    className={`text-xs whitespace-pre-wrap ${critiqueUnavailable ? "text-muted-foreground" : "text-foreground"}`}
                   >
                     {critique}
                   </p>
                 )}
-              </div>
+              </Card>
               {violations.length > 0 && (
-                <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                  <p className="text-3xs font-mono uppercase tracking-wide text-amber-300 mb-1">
-                    Not acknowledged
-                  </p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    {violations.map((v, i) => (
-                      <li key={i} className="text-xs font-mono text-amber-200">
-                        {v}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-3xs font-mono text-gray-500 mt-1">
-                    Revise the intent from the squadron page, then acknowledge there.
-                  </p>
-                </div>
+                <Alert variant="warning">
+                  <AlertDescription>
+                    <p className="text-xs text-warning mb-1">Not acknowledged</p>
+                    <FieldError errors={violations.map((message) => ({ message }))} />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Revise the intent from the squadron page, then acknowledge there.
+                    </p>
+                  </AlertDescription>
+                </Alert>
               )}
-              <label className="flex items-center gap-2 text-xs font-mono text-gray-300">
-                <input
-                  type="checkbox"
+              <Field orientation="horizontal">
+                <Checkbox
+                  id="helm-read"
                   checked={readCritique}
-                  onChange={(e) => setReadCritique(e.target.checked)}
+                  onCheckedChange={(value) => setReadCritique(value === true)}
                 />
-                I have read the critique and the fee verdict. The engine will enter on the next tick
-                and enforce the posture above.
-              </label>
-              <button
-                onClick={acknowledge}
-                disabled={!canAcknowledge}
-                className="w-full rounded border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-xs font-mono text-teal-200 hover:bg-teal-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+                <FieldLabel htmlFor="helm-read">
+                  I have read the critique and the fee verdict. The engine will enter on the next
+                  tick and enforce the posture above.
+                </FieldLabel>
+              </Field>
+              <Button onClick={acknowledge} disabled={!canAcknowledge} className="w-full">
+                {busy && <Spinner data-icon="inline-start" />}
                 {busy ? "Acknowledging…" : "Acknowledge and enter"}
-              </button>
+              </Button>
             </>
           )}
 
           {/* ── Step 4: done ───────────────────────────────────────────────── */}
           {step === "done" && detail && (
-            <div className="rounded border border-teal-500/30 bg-teal-500/10 px-3 py-3 text-xs font-mono text-teal-100 space-y-1">
-              <p>
-                Intent #{detail.intent.id} acknowledged on {detail.intent.squadron_id}.
-              </p>
-              <p className="text-gray-300">
-                The engine enters on its next tick, subject to its own risk gates (kill switch,
-                live-orders gate, exposure cap, collateral, drawdown). Follow it on the squadron
-                page.
-              </p>
-              <button
-                onClick={onClose}
-                className="mt-2 rounded border border-surface-border px-3 py-1.5 text-xs font-mono text-gray-300 hover:bg-white/[0.03]"
-              >
-                Close
-              </button>
-            </div>
+            <Alert variant="success">
+              <AlertDescription className="space-y-2 tabular-nums">
+                <p>
+                  Intent #{detail.intent.id} acknowledged on {detail.intent.squadron_id}.
+                </p>
+                <p className="text-foreground">
+                  The engine enters on its next tick, subject to its own risk gates (kill switch,
+                  live-orders gate, exposure cap, collateral, drawdown). Follow it on the squadron
+                  page.
+                </p>
+                <Button onClick={onClose} variant="outline" className="mt-2">
+                  Close
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

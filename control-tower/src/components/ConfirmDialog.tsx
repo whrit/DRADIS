@@ -17,6 +17,16 @@
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /**
  * In-app replacement for `window.confirm`.
@@ -26,7 +36,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
  * blocks the JS thread — which stalls SWR polling behind it. This keeps the
  * Control Tower's own look and lets a confirmation show real data.
  *
- * Styling follows the AdvancedConfigModal idiom so all overlays match.
+ * Uses the shared dialog primitives so all overlays match.
  */
 
 export interface ConfirmOptions {
@@ -85,65 +95,71 @@ function ConfirmDialog({
 }) {
   const confirmBtn = useRef<HTMLButtonElement>(null);
 
-  // Escape cancels — matches both the native dialog and AdvancedConfigModal.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onResolve(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onResolve]);
-
+  // Escape and backdrop clicks cancel, matching the previous dialog.
   // Focus the confirm action so Enter works without reaching for the mouse.
   useEffect(() => {
-    confirmBtn.current?.focus();
-  }, []);
+    const onClick = (event: MouseEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches('[data-slot="alert-dialog-overlay"]')
+      )
+        onResolve(false);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [onResolve]);
 
   const danger = opts.tone === "danger";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={() => onResolve(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label={opts.title}
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onResolve(false);
+      }}
     >
-      <div
-        className="card w-full max-w-md flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+      <AlertDialogContent
+        className="max-h-dvh overflow-y-auto sm:max-w-md"
+        aria-describedby={opts.body != null ? "confirm-dialog-body" : undefined}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          confirmBtn.current?.focus();
+        }}
       >
-        <div className="px-5 py-3 border-b border-surface-border">
-          <h2 className="text-sm font-semibold text-white">{opts.title}</h2>
-        </div>
-
-        {opts.body != null && (
-          <div className="px-5 py-4 text-xs text-gray-400 space-y-2 max-h-60vh overflow-y-auto">
-            {opts.body}
-          </div>
-        )}
-
-        <div className="px-5 py-3 border-t border-surface-border flex justify-end gap-2">
-          <button
-            onClick={() => onResolve(false)}
-            className="text-xs font-mono px-3 py-1.5 rounded-lg border bg-surface-card border-surface-border text-gray-400 hover:border-gray-600 hover:text-gray-200 transition-colors"
+        <AlertDialogHeader>
+          <AlertDialogTitle>{opts.title}</AlertDialogTitle>
+          {opts.body != null && (
+            <AlertDialogDescription asChild>
+              <div
+                id="confirm-dialog-body"
+                className="max-h-96 space-y-2 overflow-y-auto text-xs text-muted-foreground"
+              >
+                {opts.body}
+              </div>
+            </AlertDialogDescription>
+          )}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            onClick={(event) => {
+              event.preventDefault();
+              onResolve(false);
+            }}
           >
             {opts.cancelLabel ?? "Cancel"}
-          </button>
-          <button
+          </AlertDialogCancel>
+          <AlertDialogAction
             ref={confirmBtn}
-            onClick={() => onResolve(true)}
-            className={[
-              "text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors",
-              danger
-                ? "bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20"
-                : "bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30",
-            ].join(" ")}
+            variant={danger ? "destructive" : "default"}
+            onClick={(event) => {
+              event.preventDefault();
+              onResolve(true);
+            }}
           >
             {opts.confirmLabel ?? "Confirm"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

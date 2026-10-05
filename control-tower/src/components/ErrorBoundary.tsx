@@ -17,6 +17,9 @@
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import { Component, type ReactNode } from "react";
+import { WarningIcon } from "@phosphor-icons/react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   children: ReactNode;
@@ -53,16 +56,16 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="card px-4 py-3 border border-red-500/30 bg-red-500/5 text-red-300 text-xs font-mono space-y-2">
-          <p className="font-semibold">{this.props.label ?? "This view"} failed to render.</p>
-          <p className="text-red-400/80 break-all">{this.state.error.message}</p>
-          <button
-            onClick={this.reset}
-            className="px-3 py-1 rounded border border-red-500/40 text-red-200 hover:bg-red-500/10 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
+        <Alert variant="destructive">
+          <WarningIcon />
+          <AlertTitle>{this.props.label ?? "This view"} failed to render.</AlertTitle>
+          <AlertDescription>
+            <p className="break-all">{this.state.error.message}</p>
+            <Button variant="outline" onClick={this.reset}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
       );
     }
     return this.props.children;

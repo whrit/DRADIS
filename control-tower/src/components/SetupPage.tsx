@@ -72,6 +72,36 @@ import useSWR, { useSWRConfig } from "swr";
 import { getConfig, patchConfig, getConfigSchema, getStatus } from "@/lib/api";
 import { AdvancedRow } from "@/components/AdvancedConfigModal";
 import type { DynamicConfig, ConfigFieldSchema } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SectionHeader } from "@/components/shared";
+import { CheckCircleIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 
 // Which /api/setup/test kind exercises a given credential scope/group.
 const TEST_KINDS: Record<string, { kind: string; label: string; keys: string[] }> = {
@@ -253,21 +283,23 @@ function BoolCredential({
   // Nothing is selected until the operator chooses or a value is already set,
   // so an unset key cannot look like a deliberate "false".
   const current = value ?? (c.set ? c.hint.replace(/^set\s*/, "") : undefined);
-  const pick = (v: string) =>
-    `px-3 py-1 text-xs font-mono rounded border transition-colors ${
-      current === v
-        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
-        : "bg-transparent text-gray-500 border-gray-700 hover:text-gray-300"
-    }`;
   return (
-    <div className="flex items-center gap-2">
-      <button type="button" className={pick(on)} onClick={() => onDraft(c.key, on)}>
-        {c.kind === "bool01" ? "Demo" : "On"}
-      </button>
-      <button type="button" className={pick(off)} onClick={() => onDraft(c.key, off)}>
-        {c.kind === "bool01" ? "Live" : "Off"}
-      </button>
-    </div>
+    <RadioGroup
+      id={c.key}
+      value={current ?? ""}
+      onValueChange={(value) => onDraft(c.key, value)}
+      className="flex gap-4"
+      aria-label={c.label}
+    >
+      <Field orientation="horizontal" className="w-auto">
+        <RadioGroupItem id={c.key + "-on"} value={on} />
+        <FieldLabel htmlFor={c.key + "-on"}>{c.kind === "bool01" ? "Demo" : "On"}</FieldLabel>
+      </Field>
+      <Field orientation="horizontal" className="w-auto">
+        <RadioGroupItem id={c.key + "-off"} value={off} />
+        <FieldLabel htmlFor={c.key + "-off"}>{c.kind === "bool01" ? "Live" : "Off"}</FieldLabel>
+      </Field>
+    </RadioGroup>
   );
 }
 
@@ -299,7 +331,7 @@ function groupsForVenue(venue: VenueId) {
     });
   } else {
     groups.push({
-      title: "Polymarket US API Keys",
+      title: "Polymarket US API keys",
       blurb: "Custodial venue key ID + secret from your Polymarket US account.",
       keys: ["POLYMARKET_US_KEY_ID", "POLYMARKET_US_SECRET_KEY"],
       test: "us_keys",
@@ -310,13 +342,13 @@ function groupsForVenue(venue: VenueId) {
   // by GET /api/setup/raptors so a new Raptor needs no change to this file.
   groups.push(
     {
-      title: "Telegram Alerts",
+      title: "Telegram alerts",
       blurb: "Bot token + chat ID for trade notifications (optional).",
       keys: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
       test: "telegram",
     },
     {
-      title: "LLM Advisor",
+      title: "LLM advisor",
       blurb: "Optional. Pick a preset below — the fields shown adapt to it. Applies on restart.",
       keys: [
         "LLM_PROVIDER",
@@ -332,21 +364,11 @@ function groupsForVenue(venue: VenueId) {
   return groups;
 }
 
-const inputCls =
-  "w-full bg-surface-well border border-surface-border rounded-lg px-3 py-2 text-sm font-mono text-gray-200 " +
-  "placeholder-gray-600 focus:outline-none focus:border-indigo-500/60";
-
+const inputCls = "w-full";
 const btnCls = (variant: "primary" | "ghost" | "danger" = "ghost") =>
-  [
-    "text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
-    variant === "primary" &&
-      "bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30",
-    variant === "danger" && "bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20",
-    variant === "ghost" &&
-      "bg-surface-card border-surface-border text-gray-400 hover:border-gray-600 hover:text-gray-200",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  buttonVariants({
+    variant: variant === "primary" ? "default" : variant === "danger" ? "destructive" : "outline",
+  });
 
 // ── Venue selector (multi-venue AMI only) ────────────────────────────────────
 
@@ -396,70 +418,73 @@ function VenueCard({
   };
 
   return (
-    <div
-      className={`bg-surface-card border border-surface-border rounded-xl p-4 space-y-3 ${busy ? "opacity-70 pointer-events-none" : ""}`}
-    >
-      <div>
-        <h3 className="text-sm font-mono text-gray-200">🎯 Trading Venue</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
+    <Card className={`     ${busy ? "opacity-70 pointer-events-none" : ""}`}>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-foreground">Trading venue</CardTitle>
+        <CardDescription className="text-xs text-muted-foreground mt-0.5">
           This image can trade any of the venues below. Switching restarts the engine and loads that
           venue&apos;s credentials — positions and history stay in the database but are scoped per
           venue.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {available.map((v) => {
-          const active = v === status.venue;
-          return (
-            <button
-              key={v}
-              disabled={busy || active}
-              onClick={() => setPending(v)}
-              className={[
-                "text-left text-xs font-mono rounded-lg border px-3 py-2 transition-colors",
-                "disabled:cursor-default",
-                // While a switch is applying, highlight the venue being switched
-                // TO. Leaving the old one lit made a successful switch look like
-                // nothing had happened until the engine finished restarting.
-                switching === v
-                  ? "bg-indigo-500/15 border-indigo-500/50 text-indigo-200"
-                  : active && !switching
-                    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
-                    : "bg-surface-inset border-surface-border text-gray-400 hover:border-gray-600 hover:text-gray-200",
-              ].join(" ")}
-            >
-              <div>{VENUE_META[v].label}</div>
-              {switching === v && (
-                <div className="text-3xs text-indigo-300/80 mt-0.5">starting…</div>
-              )}
-              {active && !switching && (
-                <div className="text-3xs text-emerald-400/70 mt-0.5">running</div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {pending && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 space-y-2">
-          <p className="text-xs font-mono text-amber-300">Switch to {VENUE_META[pending].label}?</p>
-          <p className="text-2xs text-amber-200/80">
-            The engine restarts immediately. Any resting orders on {VENUE_META[status.venue].label}{" "}
-            are left in place on that venue and will no longer be managed — cancel them first if you
-            do not want them working.
-          </p>
-          <div className="flex gap-2">
-            <button disabled={busy} onClick={() => apply(pending)} className={btnCls("primary")}>
-              {busy ? "Switching…" : "Switch and restart"}
-            </button>
-            <button disabled={busy} onClick={() => setPending(null)} className={btnCls("ghost")}>
-              Cancel
-            </button>
-          </div>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {available.map((v) => {
+            const active = v === status.venue;
+            return (
+              <Button
+                variant="outline"
+                key={v}
+                disabled={busy || active}
+                onClick={() => setPending(v)}
+                className={[
+                  "h-auto min-h-16 flex-col items-start whitespace-normal text-left",
+                  "disabled:cursor-default",
+                  // While a switch is applying, highlight the venue being switched
+                  // TO. Leaving the old one lit made a successful switch look like
+                  // nothing had happened until the engine finished restarting.
+                  switching === v
+                    ? "bg-primary/15 border-primary/50 text-primary"
+                    : active && !switching
+                      ? "bg-success/10 border-success/40 text-success"
+                      : "bg-muted border-border text-muted-foreground hover:border-border hover:text-muted-foreground",
+                ].join(" ")}
+              >
+                {busy && <Spinner data-icon="inline-start" />}
+                <div>{VENUE_META[v].label}</div>
+                {switching === v && <div className="text-xs text-primary/80 mt-0.5">starting…</div>}
+                {active && !switching && (
+                  <div className="text-xs text-success/70 mt-0.5">running</div>
+                )}
+              </Button>
+            );
+          })}
         </div>
-      )}
-    </div>
+
+        {pending && (
+          <Alert variant={"warning"} className="text-xs">
+            <AlertDescription>
+              <p className="text-xs text-warning">Switch to {VENUE_META[pending].label}?</p>
+              <p className="text-2xs text-warning/80">
+                The engine restarts immediately. Any resting orders on{" "}
+                {VENUE_META[status.venue].label} are left in place on that venue and will no longer
+                be managed — cancel them first if you do not want them working.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="default" disabled={busy} onClick={() => apply(pending)}>
+                  {busy && <Spinner data-icon="inline-start" />}
+                  {busy ? "Switching…" : "Switch and restart"}
+                </Button>
+                <Button variant="outline" disabled={busy} onClick={() => setPending(null)}>
+                  {busy && <Spinner data-icon="inline-start" />}
+                  Cancel
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -477,33 +502,33 @@ function VenueCard({
  */
 function LostPasswordHelp() {
   return (
-    <details className="text-xs text-gray-500 font-mono">
-      <summary className="cursor-pointer text-gray-400 hover:text-gray-300">
+    <details className="text-xs text-muted-foreground ">
+      <summary className="cursor-pointer text-muted-foreground hover:text-muted-foreground">
         Lost the Setup password?
       </summary>
-      <div className="mt-2 space-y-2 text-gray-500">
+      <div className="mt-2 space-y-2 text-muted-foreground">
         <p>
           It is stored only as a hash and cannot be recovered or reset from the browser. Everything
           else on the instance — venue credentials, strategy configuration, positions — is untouched
           by a reset.
         </p>
         <p>
-          <span className="text-gray-400">From a shell on the instance</span> (SSH with the key pair
-          you launched with), remove the hash line and restart the engine; Setup will ask you to
-          create a new password:
+          <span className="text-muted-foreground">From a shell on the instance</span> (SSH with the
+          key pair you launched with), remove the hash line and restart the engine; Setup will ask
+          you to create a new password:
         </p>
-        <pre className="bg-surface-sunken border border-surface-border rounded px-2 py-1.5 overflow-x-auto text-gray-300">{`sudo sed -i '/^DRADIS_ADMIN_HASH=/d' /opt/dradis/data/secrets.env
+        <pre className="font-mono bg-muted border border-border rounded-sm px-2 py-1.5 overflow-x-auto text-muted-foreground">{`sudo sed -i '/^DRADIS_ADMIN_HASH=/d' /opt/dradis/data/secrets.env
 sudo docker restart dradis`}</pre>
         <p>
           On a self-hosted deployment the file is{" "}
-          <span className="text-gray-400">$DRADIS_DATA_DIR/secrets.env</span> (default{" "}
-          <span className="text-gray-400">./data/secrets.env</span>); restart the engine container
-          the same way.
+          <span className="text-muted-foreground">$DRADIS_DATA_DIR/secrets.env</span> (default{" "}
+          <span className="text-muted-foreground">./data/secrets.env</span>); restart the engine
+          container the same way.
         </p>
         <p>
-          <span className="text-gray-400">Without shell access</span>, launch a fresh instance and
-          import a config bundle if you exported one. Bundles carry credentials and configuration
-          but never the Setup password, so the new instance asks you to create one.
+          <span className="text-muted-foreground">Without shell access</span>, launch a fresh
+          instance and import a config bundle if you exported one. Bundles carry credentials and
+          configuration but never the Setup password, so the new instance asks you to create one.
         </p>
       </div>
     </details>
@@ -563,56 +588,72 @@ function PasswordCard({
   };
 
   return (
-    <div className="max-w-md mx-auto bg-surface-card border border-surface-border rounded-xl p-6 space-y-4">
-      <div>
-        <h2 className="text-sm font-mono text-gray-200">
-          {mode === "create" ? "🛡️ Create the Setup password" : "🔐 Setup password"}
-        </h2>
+    <Card className="max-w-md mx-auto">
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-foreground">
+          {mode === "create" ? " Create the Setup password" : " Setup password"}
+        </CardTitle>
         {/* Two passwords guard a Marketplace instance and only one is on the
             launch screen: the Control Tower login (admin / the EC2 instance ID)
             and this one. Both cards say which one they mean, because an
             operator who has just typed the documented credential into this box
             and been refused concludes the documented credential is broken. */}
-        <p className="text-xs text-gray-500 mt-1">
+        <CardDescription className="text-xs text-muted-foreground mt-1">
           {mode === "create"
             ? "This password protects credential management (this Setup view) on this DRADIS instance. It is separate from the Control Tower login you used to open the dashboard, and it is stored only as a hash: if you lose it, it can be reset from a shell on the instance but never recovered."
             : "Enter the Setup password created in the first-boot wizard on this instance. It is not the Control Tower login (admin / the EC2 instance ID on the Marketplace AMI) — you have already passed that one."}
-        </p>
-      </div>
-      {mode === "login" && notice && (
-        <div className="text-xs text-amber-300 font-mono bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
-          {notice}
-        </div>
-      )}
-      <form onSubmit={submit} className="space-y-3">
-        <input
-          type="password"
-          className={inputCls}
-          placeholder={mode === "create" ? "New Setup password" : "Setup password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoFocus
-        />
-        {mode === "create" && (
-          <input
-            type="password"
-            className={inputCls}
-            placeholder="Confirm password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {mode === "login" && notice && (
+          <Alert variant={"warning"} className="text-xs">
+            <AlertDescription>{notice}</AlertDescription>
+          </Alert>
         )}
-        {error && <div className="text-xs text-rose-400 font-mono">{error}</div>}
-        <button
+        <form id="setup-password-form" onSubmit={submit} className="space-y-3">
+          <Field>
+            <FieldLabel htmlFor={"setup-password"}>Setup password</FieldLabel>
+            <Input
+              id={"setup-password"}
+              type="password"
+              className={inputCls}
+              placeholder={mode === "create" ? "New Setup password" : "Setup password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+            />
+          </Field>
+          {mode === "create" && (
+            <Field>
+              <FieldLabel htmlFor={"setup-confirm-password"}>Confirm password</FieldLabel>
+              <Input
+                id={"setup-confirm-password"}
+                type="password"
+                className={inputCls}
+                placeholder="Confirm password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
+            </Field>
+          )}
+          {error && <FieldError className="text-xs text-destructive ">{error}</FieldError>}
+        </form>
+        {mode === "login" && <LostPasswordHelp />}
+      </CardContent>
+      <CardFooter>
+        {" "}
+        <Button
+          variant="default"
           type="submit"
+          form="setup-password-form"
           disabled={busy || !password}
-          className={btnCls("primary") + " w-full py-2"}
+          className="w-full py-2"
         >
-          {busy ? "…" : mode === "create" ? "Set password & continue" : "Log in"}
-        </button>
-      </form>
-      {mode === "login" && <LostPasswordHelp />}
-    </div>
+          {busy && <Spinner data-icon="inline-start" />}
+          {busy ? "Working…" : mode === "create" ? "Set password & continue" : "Log in"}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -718,33 +759,34 @@ function LlmPresets({ onApply }: { onApply: (values: Record<string, string>) => 
   const active = LLM_PRESETS.find((p) => p.id === chosen);
 
   return (
-    <div className="space-y-2 border-b border-surface-border pb-3">
-      <p className="text-2xs font-mono text-gray-500">Start from a preset</p>
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-2 border-b border-border pb-3">
+      <p className="text-2xs text-muted-foreground">Start from a preset</p>
+      {/* Buttons, not a radio group: a preset is an action. Clicking the current
+          one again re-applies its values over any edits made since. */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label="LLM preset">
         {LLM_PRESETS.map((p) => (
-          <button
+          <Button
             key={p.id}
+            variant="outline"
+            aria-pressed={chosen === p.id}
             onClick={() => {
               setChosen(p.id);
               onApply(p.values);
             }}
-            className={[
-              "text-xs font-mono px-3 py-1.5 rounded-lg border transition-colors",
-              chosen === p.id
-                ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
-                : "bg-surface-inset border-surface-border text-gray-400 hover:border-gray-600 hover:text-gray-200",
-            ].join(" ")}
-            title={p.blurb}
+            className={cn(
+              "h-auto flex-col items-start gap-1 p-3 text-left whitespace-normal",
+              chosen === p.id && "border-primary/50 bg-primary/10",
+            )}
           >
-            {p.label}
-          </button>
+            <span className="text-xs font-medium">{p.label}</span>
+            <span className="text-xs font-normal text-muted-foreground">{p.blurb}</span>
+          </Button>
         ))}
       </div>
       {active?.note && (
-        <p className="text-2xs text-amber-200/80 bg-amber-500/5 border border-amber-500/20 rounded-lg px-2.5 py-2 leading-relaxed">
-          {active.id === "ollama" ? "🖥️ " : "🔑 "}
-          {active.note}
-        </p>
+        <Alert variant="warning" className="text-xs">
+          <AlertDescription>{active.note}</AlertDescription>
+        </Alert>
       )}
     </div>
   );
@@ -752,71 +794,49 @@ function LlmPresets({ onApply }: { onApply: (values: Record<string, string>) => 
 
 /** Step-by-step help for one credential group. Dismissed on Escape or backdrop. */
 function HelpModal({ doc, onClose }: { doc: HelpDoc; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-120 overflow-y-auto bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
-      role="presentation"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="min-h-full flex items-start justify-center p-4 py-12">
-        <div
-          className="w-full max-w-lg bg-surface-card border border-surface-border-strong rounded-2xl p-6 space-y-4 shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-label={doc.title}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <h3 className="text-base font-mono text-gray-100">{doc.title}</h3>
-            <button onClick={onClose} className={btnCls("ghost") + " shrink-0"} autoFocus>
-              Close
-            </button>
-          </div>
-
-          <p className="text-xs text-gray-400 leading-relaxed">{doc.intro}</p>
-
-          <ol className="space-y-2 text-xs text-gray-300">
-            {doc.steps.map((step, i) => (
-              <li key={i} className="flex gap-3">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-3xs font-mono flex items-center justify-center mt-px">
-                  {i + 1}
-                </span>
-                <span className="leading-relaxed">{step}</span>
-              </li>
-            ))}
-          </ol>
-
-          {doc.warnings && doc.warnings.length > 0 && (
-            <div className="bg-amber-500/5 border border-amber-500/25 rounded-xl p-3 space-y-1.5">
+      <DialogContent className="max-w-lg max-h-160 overflow-y-auto" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{doc.title}</DialogTitle>
+          <DialogDescription>{doc.intro}</DialogDescription>
+        </DialogHeader>
+        <ol className="list-decimal pl-5 space-y-2 text-xs">
+          {doc.steps.map((step, i) => (
+            <li key={i} className="pl-1 leading-relaxed">
+              {step}
+            </li>
+          ))}
+        </ol>
+        {doc.warnings && doc.warnings.length > 0 && (
+          <Alert variant="warning">
+            <WarningIcon />
+            <AlertDescription>
               {doc.warnings.map((w, i) => (
-                <p key={i} className="text-2xs text-amber-200/85 leading-relaxed">
-                  ⚠️ {w}
-                </p>
+                <p key={i}>{w}</p>
               ))}
-            </div>
-          )}
-
+            </AlertDescription>
+          </Alert>
+        )}
+        <DialogFooter>
           {doc.link && (
-            <a
-              href={doc.link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-mono text-indigo-400 hover:text-indigo-300 hover:underline"
-            >
-              {doc.link.label} ↗
-            </a>
+            <Button asChild variant="outline">
+              <a href={doc.link.href} target="_blank" rel="noopener noreferrer">
+                {doc.link.label} ↗
+              </a>
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+          <Button variant="outline" onClick={onClose} autoFocus>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -867,112 +887,117 @@ function CredentialGroup({
   };
 
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-5 space-y-3">
-      <div className="flex items-start justify-between gap-3">
+    <Card>
+      <CardHeader className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-mono text-gray-200">
+          <CardTitle className="text-sm font-medium text-foreground">
             {title}
             {help && (
-              <button
+              <Button
+                variant="outline"
                 onClick={() => setShowHelp(true)}
-                className="ml-2 align-middle text-2xs font-mono text-indigo-400 hover:text-indigo-300 hover:underline"
+                className="ml-2 align-middle text-2xs text-primary hover:text-primary hover:underline"
               >
                 How do I get this?
-              </button>
+              </Button>
             )}
-          </h3>
-          <p className="text-xs text-gray-500 mt-0.5">{blurb}</p>
+          </CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-0.5">
+            {blurb}
+          </CardDescription>
         </div>
-        {testKind && (
-          <button onClick={runTest} disabled={testing} className={btnCls("ghost") + " shrink-0"}>
-            {testing ? "Testing…" : TEST_KINDS[testKind].label}
-          </button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {showHelp && help && <HelpModal doc={help} onClose={() => setShowHelp(false)} />}
+
+        {presets && (
+          <LlmPresets
+            onApply={(vals) => {
+              for (const [k, v] of Object.entries(vals)) onDraft(k, v);
+            }}
+          />
         )}
-      </div>
 
-      {showHelp && help && <HelpModal doc={help} onClose={() => setShowHelp(false)} />}
-
-      {presets && (
-        <LlmPresets
-          onApply={(vals) => {
-            for (const [k, v] of Object.entries(vals)) onDraft(k, v);
-          }}
-        />
-      )}
-
-      <div className="space-y-2">
-        {creds.map((c) => (
-          <div key={c.key}>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-mono text-gray-400">{c.label}</label>
-              <span
-                className={`text-3xs font-mono ${c.set ? "text-emerald-400" : "text-gray-600"}`}
-              >
-                {c.set ? `set ${c.hint} · ${c.source}` : "not set"}
-              </span>
-            </div>
-            {c.kind === "bool" || c.kind === "bool01" ? (
-              <BoolCredential c={c} value={drafts[c.key]} onDraft={onDraft} />
-            ) : c.multiline ? (
-              // A PEM has to keep its line breaks, and a single-line <input>
-              // cannot hold one — the browser strips the newlines on paste, so
-              // the key arrives mangled and only fails much later, at signing.
-              <>
-                <textarea
-                  className={`${inputCls} h-32 resize-y font-mono text-2xs leading-snug`}
-                  placeholder={
-                    c.set
-                      ? "•••••••• (leave blank to keep current)"
-                      : "-----BEGIN RSA PRIVATE KEY-----\n…\n-----END RSA PRIVATE KEY-----"
+        <div className="space-y-2">
+          {creds.map((c) => (
+            <Field key={c.key}>
+              <div className="flex items-center justify-between mb-1">
+                <FieldLabel htmlFor={c.key} className="text-xs text-muted-foreground">
+                  {c.label}
+                </FieldLabel>
+                <Badge variant={c.set ? "success" : "secondary"}>
+                  {c.set ? `set ${c.hint} · ${c.source}` : "not set"}
+                </Badge>
+              </div>
+              {c.kind === "bool" || c.kind === "bool01" ? (
+                <BoolCredential c={c} value={drafts[c.key]} onDraft={onDraft} />
+              ) : c.multiline ? (
+                // A PEM has to keep its line breaks, and a single-line <input>
+                // cannot hold one — the browser strips the newlines on paste, so
+                // the key arrives mangled and only fails much later, at signing.
+                <>
+                  <Textarea
+                    id={c.key}
+                    className={`${inputCls} h-32 resize-y text-2xs leading-snug`}
+                    placeholder={
+                      c.set
+                        ? "•••••••• (leave blank to keep current)"
+                        : "-----BEGIN RSA PRIVATE KEY-----\n…\n-----END RSA PRIVATE KEY-----"
+                    }
+                    value={drafts[c.key] ?? ""}
+                    onChange={(e) => onDraft(c.key, e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <FieldDescription className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Paste the whole key including the BEGIN and END lines. Line breaks are restored
+                    automatically if your clipboard drops them.
+                  </FieldDescription>
+                </>
+              ) : (
+                <Input
+                  id={c.key}
+                  type={
+                    /URL|CHAT_ID|PROVIDER|MODEL|BASE|DEMO|ENABLE_/.test(c.key) ? "text" : "password"
                   }
+                  className={inputCls}
+                  placeholder={c.set ? "•••••••• (leave blank to keep current)" : "Enter value"}
                   value={drafts[c.key] ?? ""}
                   onChange={(e) => onDraft(c.key, e.target.value)}
                   autoComplete="off"
                   spellCheck={false}
                 />
-                <p className="text-3xs text-gray-600 mt-1 leading-relaxed">
-                  Paste the whole key including the BEGIN and END lines. Line breaks are restored
-                  automatically if your clipboard drops them.
-                </p>
-              </>
-            ) : (
-              <input
-                type={
-                  /URL|CHAT_ID|PROVIDER|MODEL|BASE|DEMO|ENABLE_/.test(c.key) ? "text" : "password"
-                }
-                className={inputCls}
-                placeholder={c.set ? "•••••••• (leave blank to keep current)" : "Enter value"}
-                value={drafts[c.key] ?? ""}
-                onChange={(e) => onDraft(c.key, e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-
-      {result && (
-        <div
-          className={`text-xs font-mono rounded-lg px-3 py-2 border ${
-            result.ok
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-              : "bg-rose-500/10 border-rose-500/30 text-rose-300"
-          }`}
-        >
-          {result.ok
-            ? `✓ Connection OK (${result.ms}ms)${
-                result.details
-                  ? " — " +
-                    Object.entries(result.details)
-                      .map(([k, v]) => `${k}: ${v}`)
-                      .join(", ")
-                  : ""
-              }`
-            : `✗ ${result.error}`}
+              )}
+            </Field>
+          ))}
         </div>
-      )}
-    </div>
+
+        {result && (
+          <Alert variant={result.ok ? "success" : "destructive"} className="text-xs">
+            <AlertDescription>
+              {result.ok
+                ? ` Connection OK (${result.ms}ms)${
+                    result.details
+                      ? " — " +
+                        Object.entries(result.details)
+                          .map(([k, v]) => `${k}: ${v}`)
+                          .join(", ")
+                      : ""
+                  }`
+                : ` ${result.error}`}
+            </AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+      <CardFooter>
+        {testKind && (
+          <Button variant="outline" onClick={runTest} disabled={testing} className="shrink-0">
+            {testing && <Spinner data-icon="inline-start" />}
+            {testing ? "Testing…" : TEST_KINDS[testKind].label}
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -980,10 +1005,10 @@ function CredentialGroup({
 
 // Tier badges describe how much the SIGNAL matters, not whether it is currently
 // configured — a "required" Raptor on a public feed needs no key at all.
-const TIER_BADGE: Record<RaptorTier, string> = {
-  required: "bg-rose-500/10 border-rose-500/30 text-rose-300",
-  recommended: "bg-amber-500/10 border-amber-500/30 text-amber-300",
-  optional: "bg-sky-500/10 border-sky-500/30 text-sky-300",
+const TIER_BADGE: Record<RaptorTier, "destructive" | "warning" | "secondary"> = {
+  required: "destructive",
+  recommended: "warning",
+  optional: "secondary",
 };
 
 const PERIOD_SECS: Record<"day" | "month", number> = { day: 86_400, month: 2_592_000 };
@@ -1042,40 +1067,42 @@ function PollCadence({ raptor, schema }: { raptor: RaptorSource; schema: ConfigF
   const dirty = draft !== "" && Number(draft) !== saved;
 
   return (
-    <div className="border-t border-surface-border pt-3 space-y-1.5">
+    <Field className="border-t border-border pt-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-mono text-gray-400">Poll interval</label>
+        <FieldLabel htmlFor={field}>Poll interval</FieldLabel>
         <div className="flex items-center gap-1.5">
-          <input
+          <Input
+            id={field}
             type="number"
             min={min}
             max={max}
             step={spec?.step ?? 1}
-            className={inputCls + " w-24 text-right py-1"}
+            className={inputCls + " font-mono tabular-nums" + " w-24 text-right py-1"}
             value={draft !== "" ? draft : (saved ?? "")}
             onChange={(e) => setDraft(e.target.value)}
             disabled={!config}
           />
-          <span className="text-2xs font-mono text-gray-600">s</span>
-          <button onClick={save} disabled={!dirty || saving} className={btnCls("primary")}>
-            {saving ? "…" : "Save"}
-          </button>
+          <span className="text-2xs text-muted-foreground">s</span>
+          <Button variant="default" onClick={save} disabled={!dirty || saving}>
+            {saving && <Spinner data-icon="inline-start" />}
+            {saving ? "Saving…" : "Save"}
+          </Button>
         </div>
       </div>
 
       {projection && (
-        <p className={`text-3xs font-mono ${projection.over ? "text-amber-400" : "text-gray-600"}`}>
+        <p className={`text-xs ${projection.over ? "text-warning" : "text-muted-foreground"}`}>
           ≈ {projection.used.toLocaleString()} requests/{projection.period}
           {projection.over
             ? ` — over the free tier's ${projection.requests.toLocaleString()}/${projection.period}; needs a paid plan`
             : ` — within the free tier's ${projection.requests.toLocaleString()}/${projection.period}`}
         </p>
       )}
-      <p className="text-3xs font-mono text-gray-700">
+      <p className="text-xs text-muted-foreground">
         Applies on the raptor&apos;s next cycle — no restart, unlike the key above.
       </p>
-      {err && <p className="text-3xs font-mono text-rose-400">{err}</p>}
-    </div>
+      {err && <FieldError className="text-xs text-destructive">{err}</FieldError>}
+    </Field>
   );
 }
 
@@ -1118,11 +1145,12 @@ function FeedSelector({ fieldKey, schema }: { fieldKey: string; schema: ConfigFi
   };
 
   return (
-    <div className="space-y-1">
+    <Field className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-mono text-gray-400">{spec?.label ?? fieldKey}</label>
+        <FieldLabel htmlFor={fieldKey}>{spec?.label ?? fieldKey}</FieldLabel>
         <div className="flex items-center gap-1.5">
-          <input
+          <Input
+            id={fieldKey}
             type="text"
             className={inputCls + " w-44 py-1"}
             value={shown}
@@ -1132,16 +1160,19 @@ function FeedSelector({ fieldKey, schema }: { fieldKey: string; schema: ConfigFi
             autoComplete="off"
             spellCheck={false}
           />
-          <button onClick={save} disabled={!dirty || saving} className={btnCls("primary")}>
+          <Button variant="default" onClick={save} disabled={!dirty || saving}>
+            {saving && <Spinner data-icon="inline-start" />}
             {saving ? "…" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
       {spec?.description && (
-        <p className="text-3xs font-mono text-gray-600 leading-snug">{spec.description}</p>
+        <FieldDescription className="text-xs text-muted-foreground leading-snug">
+          {spec.description}
+        </FieldDescription>
       )}
-      {err && <p className="text-3xs font-mono text-rose-400">{err}</p>}
-    </div>
+      {err && <FieldError className="text-xs text-destructive">{err}</FieldError>}
+    </Field>
   );
 }
 
@@ -1179,18 +1210,19 @@ function RaptorSettings({ raptor, schema }: { raptor: RaptorSource; schema: Conf
   if (fields.length === 0) return null;
 
   return (
-    <div className="border-t border-surface-border pt-3">
-      <button
+    <div className="border-t border-border pt-3">
+      <Button
+        variant="outline"
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-2xs font-mono text-gray-500 hover:text-gray-300 transition-colors"
+        className="text-2xs text-muted-foreground hover:text-muted-foreground transition-colors"
       >
         {open ? "▾" : "▸"} {fields.length} setting{fields.length === 1 ? "" : "s"}
-      </button>
+      </Button>
       {open && (
         <div className="mt-3 space-y-3">
           {!config ? (
-            <p className="text-2xs font-mono text-gray-600">Loading…</p>
+            <p className="text-2xs text-muted-foreground">Loading…</p>
           ) : (
             fields.map((f) => (
               <AdvancedRow key={f.key} field={f} config={config} onPatch={patch} disabled={false} />
@@ -1244,131 +1276,134 @@ function RaptorCard({
   };
 
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-5 space-y-3">
-      <div className="flex items-start justify-between gap-3">
+    <Card>
+      <CardHeader className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-mono text-gray-200">{raptor.name}</h3>
-            <span
-              className={`text-3xs font-mono px-1.5 py-0.5 rounded border ${TIER_BADGE[raptor.tier]}`}
+            <CardTitle className="text-sm font-medium text-foreground">{raptor.name}</CardTitle>
+            <Badge variant={TIER_BADGE[raptor.tier]}>{raptor.tier}</Badge>
+            <Badge
+              variant={configured ? "success" : "secondary"}
+              className={`text-xs ${configured ? "text-success" : "text-muted-foreground"}`}
             >
-              {raptor.tier}
-            </span>
-            <span
-              className={`text-3xs font-mono ${configured ? "text-emerald-400" : "text-gray-600"}`}
-            >
-              {configured ? "● live" : "○ idle"}
-            </span>
+              {configured ? "live" : "idle"}
+            </Badge>
           </div>
-          <p className="text-2xs font-mono text-gray-600 mt-0.5">{raptor.source}</p>
-          <p className="text-xs text-gray-500 mt-1">{raptor.blurb}</p>
+          <CardDescription className="text-2xs text-muted-foreground mt-0.5">
+            {raptor.source}
+          </CardDescription>
+          <CardDescription className="text-xs text-muted-foreground mt-1">
+            {raptor.blurb}
+          </CardDescription>
         </div>
-        {raptor.test_kind && (
-          <button onClick={runTest} disabled={testing} className={btnCls("ghost") + " shrink-0"}>
-            {testing ? "Testing…" : "Test key"}
-          </button>
-        )}
-      </div>
-
-      {/* Regional availability. Shown for every Raptor that has one, credentials
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Regional availability. Shown for every Raptor that has one, credentials
           or not — an operator watching a US deployment log fill with HTTP 451
           needs to know that is expected and already handled. */}
-      {raptor.region_note && (
-        <p className="text-2xs text-amber-300/80 bg-amber-500/5 border border-amber-500/20 rounded-lg px-2.5 py-2 leading-relaxed">
-          🌍 {raptor.region_note}
-        </p>
-      )}
+        {raptor.region_note && (
+          <Alert variant={"warning"} className="text-xs">
+            <AlertDescription>{raptor.region_note}</AlertDescription>
+          </Alert>
+        )}
 
-      {fields.length === 0 ? (
-        <p className="text-2xs font-mono text-gray-600 border-t border-surface-border pt-3">
-          No credentials required — public endpoint, always on.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {/* Where to generate the key. Shown above the inputs because an
+        {fields.length === 0 ? (
+          <p className="text-2xs text-muted-foreground border-t border-border pt-3">
+            No credentials required — public endpoint, always on.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {/* Where to generate the key. Shown above the inputs because an
               operator who lacks a key needs the link before the field. */}
-          {raptor.signup_url && (
-            <a
-              href={raptor.signup_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-2xs font-mono text-indigo-400 hover:text-indigo-300 hover:underline"
-            >
-              Get a key at {raptor.signup_url.replace(/^https:\/\//, "")} ↗
-            </a>
-          )}
-          {fields.map((c) => (
-            <div key={c.key}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-mono text-gray-400">{c.label}</label>
-                <span
-                  className={`text-3xs font-mono ${c.set ? "text-emerald-400" : "text-gray-600"}`}
-                >
-                  {c.set ? `set ${c.hint} · ${c.source}` : "not set"}
-                </span>
-              </div>
-              {c.kind === "bool" || c.kind === "bool01" ? (
-                <BoolCredential c={c} value={drafts[c.key]} onDraft={onDraft} />
-              ) : c.multiline ? (
-                <textarea
-                  className={`${inputCls} h-32 resize-y font-mono text-2xs leading-snug`}
-                  placeholder={
-                    c.set ? "•••••••• (leave blank to keep current)" : "Paste the whole key"
-                  }
-                  value={drafts[c.key] ?? ""}
-                  onChange={(e) => onDraft(c.key, e.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              ) : (
-                <input
-                  type="password"
-                  className={inputCls}
-                  placeholder={c.set ? "•••••••• (leave blank to keep current)" : "Enter value"}
-                  value={drafts[c.key] ?? ""}
-                  onChange={(e) => onDraft(c.key, e.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+            {raptor.signup_url && (
+              <a
+                href={raptor.signup_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-2xs text-primary hover:text-primary hover:underline"
+              >
+                Get a key at {raptor.signup_url.replace(/^https:\/\//, "")}
+              </a>
+            )}
+            {fields.map((c) => (
+              <Field key={c.key}>
+                <div className="flex items-center justify-between mb-1">
+                  <FieldLabel htmlFor={c.key} className="text-xs text-muted-foreground">
+                    {c.label}
+                  </FieldLabel>
+                  <Badge variant={c.set ? "success" : "secondary"}>
+                    {c.set ? `set ${c.hint} · ${c.source}` : "not set"}
+                  </Badge>
+                </div>
+                {c.kind === "bool" || c.kind === "bool01" ? (
+                  <BoolCredential c={c} value={drafts[c.key]} onDraft={onDraft} />
+                ) : c.multiline ? (
+                  <Textarea
+                    id={c.key}
+                    className={`${inputCls} h-32 resize-y text-2xs leading-snug`}
+                    placeholder={
+                      c.set ? "•••••••• (leave blank to keep current)" : "Paste the whole key"
+                    }
+                    value={drafts[c.key] ?? ""}
+                    onChange={(e) => onDraft(c.key, e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                ) : (
+                  <Input
+                    id={c.key}
+                    type="password"
+                    className={inputCls}
+                    placeholder={c.set ? "•••••••• (leave blank to keep current)" : "Enter value"}
+                    value={drafts[c.key] ?? ""}
+                    onChange={(e) => onDraft(c.key, e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                )}
+              </Field>
+            ))}
+          </div>
+        )}
 
-      {raptor.selector_fields.length > 0 && (
-        <div className="border-t border-surface-border pt-3 space-y-3">
-          {raptor.selector_fields.map((f) => (
-            <FeedSelector key={f} fieldKey={f} schema={schema} />
-          ))}
-        </div>
-      )}
+        {raptor.selector_fields.length > 0 && (
+          <div className="border-t border-border pt-3 space-y-3">
+            {raptor.selector_fields.map((f) => (
+              <FeedSelector key={f} fieldKey={f} schema={schema} />
+            ))}
+          </div>
+        )}
 
-      {raptor.poll_field && <PollCadence raptor={raptor} schema={schema} />}
+        {raptor.poll_field && <PollCadence raptor={raptor} schema={schema} />}
 
-      {raptor.settings_group && <RaptorSettings raptor={raptor} schema={schema} />}
+        {raptor.settings_group && <RaptorSettings raptor={raptor} schema={schema} />}
 
-      {result && (
-        <div
-          className={`text-xs font-mono rounded-lg px-3 py-2 border ${
-            result.ok
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-              : "bg-rose-500/10 border-rose-500/30 text-rose-300"
-          }`}
-        >
-          {result.ok
-            ? `✓ Connection OK (${result.ms}ms)${
-                result.details
-                  ? " — " +
-                    Object.entries(result.details)
-                      .map(([k, v]) => `${k}: ${v}`)
-                      .join(", ")
-                  : ""
-              }`
-            : `✗ ${result.error}`}
-        </div>
-      )}
-    </div>
+        {result && (
+          <Alert variant={result.ok ? "success" : "destructive"} className="text-xs">
+            <AlertDescription>
+              {result.ok
+                ? ` Connection OK (${result.ms}ms)${
+                    result.details
+                      ? " — " +
+                        Object.entries(result.details)
+                          .map(([k, v]) => `${k}: ${v}`)
+                          .join(", ")
+                      : ""
+                  }`
+                : ` ${result.error}`}
+            </AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+      <CardFooter>
+        {raptor.test_kind && (
+          <Button variant="outline" onClick={runTest} disabled={testing} className="shrink-0">
+            {testing && <Spinner data-icon="inline-start" />}
+            {testing ? "Testing…" : "Test key"}
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -1412,18 +1447,19 @@ function RaptorPanel({
   return (
     <div className="space-y-3">
       <div>
-        <h3 className="text-sm font-mono text-gray-200">📡 Raptor Signal Sources</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <SectionHeader title="Raptor signal sources" />
+        <p className="text-xs text-muted-foreground mt-0.5">
           Optional recon feeds. A Raptor without its key idles and publishes a neutral snapshot — it
-          never blocks trading. Badges rate the <span className="text-gray-400">signal</span>, not
-          whether it is configured. Saved keys apply on engine restart.
+          never blocks trading. Badges rate the{" "}
+          <span className="text-muted-foreground">signal</span>, not whether it is configured. Saved
+          keys apply on engine restart.
         </p>
       </div>
 
       {error && (
-        <div className="text-xs font-mono rounded-xl px-4 py-3 border bg-rose-500/10 border-rose-500/30 text-rose-300">
-          {error}
-        </div>
+        <Alert variant={"destructive"} className="text-xs">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {raptors ? (
@@ -1441,8 +1477,9 @@ function RaptorPanel({
         </div>
       ) : (
         !error && (
-          <div className="text-center text-gray-500 font-mono text-sm py-6">
-            Loading Raptor sources…
+          <div className="space-y-3">
+            <span className="text-xs text-muted-foreground">Loading Raptor sources…</span>
+            <Skeleton className="h-32 w-full" />
           </div>
         )
       )}
@@ -1493,12 +1530,6 @@ const PROFILE_HIGHLIGHTS: { key: string; label: string; fmt?: (v: unknown) => st
   { key: "arbitrage_max_exposure_usdc", label: "Arb exposure", fmt: (v) => `$${v}` },
 ];
 
-const PROFILE_ACCENTS: Record<string, string> = {
-  conservative: "border-emerald-800/60 hover:border-emerald-500/60",
-  balanced: "border-sky-800/60 hover:border-sky-500/60",
-  aggressive: "border-amber-800/60 hover:border-amber-500/60",
-};
-
 function ProfilesPanel({ onAuthError }: { onAuthError: () => void }) {
   const [profiles, setProfiles] = useState<Record<string, ConfigProfile> | null>(null);
   const [deployed, setDeployed] = useState<string[]>([]);
@@ -1534,26 +1565,27 @@ function ProfilesPanel({ onAuthError }: { onAuthError: () => void }) {
       body: (
         <>
           <p>
-            Replaces all <span className="text-gray-200 font-mono">{fieldCount}</span>{" "}
+            Replaces all{" "}
+            <span className="font-mono tabular-nums text-foreground">{fieldCount}</span>{" "}
             runtime-tunable settings on the global config
             {deployed.length > 0 && <> and the {deployed.length} deployed squadron(s) below</>}.
           </p>
           {deployed.length > 0 ? (
             <>
-              <ul className="font-mono text-2xs text-gray-300 bg-surface-inset border border-surface-border rounded-lg px-3 py-2 space-y-0.5">
+              <ul className="text-2xs text-muted-foreground bg-muted border border-border rounded-lg px-3 py-2 space-y-0.5">
                 {deployed.map((s) => (
                   <li key={s}>{s}</li>
                 ))}
               </ul>
-              <p className="text-amber-400">Any per-squadron tuning on these will be replaced.</p>
+              <p className="text-warning">Any per-squadron tuning on these will be replaced.</p>
             </>
           ) : (
-            <p className="text-gray-500">
+            <p className="text-muted-foreground">
               No squadrons are currently deployed, so this seeds the next one deployed but changes
               nothing that is trading right now.
             </p>
           )}
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Applies live (no restart) and is recorded in config history.
           </p>
         </>
@@ -1590,82 +1622,102 @@ function ProfilesPanel({ onAuthError }: { onAuthError: () => void }) {
   };
 
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-5 space-y-4">
-      <div>
-        <h3 className="text-sm font-mono text-gray-200">🎛️ Risk Profile</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-foreground">Risk profile</CardTitle>
+        <CardDescription className="text-xs text-muted-foreground mt-0.5">
           Replace the strategy config from a curated preset — the global config and every deployed
           squadron, so it reaches the running patrol loops. Applies live and is recorded in config
           history; individual settings can still be tuned afterwards in the Config view.
-        </p>
-        <p className="text-2xs font-mono text-gray-600 mt-1.5">
+        </CardDescription>
+        <CardDescription className="text-2xs text-muted-foreground mt-1.5">
           {deployed.length ? (
             <>
-              Will overwrite <span className="text-gray-400">{deployed.length}</span> deployed
-              squadron(s): <span className="text-gray-400">{deployed.join(", ")}</span>
+              Will overwrite <span className="text-muted-foreground">{deployed.length}</span>{" "}
+              deployed squadron(s):{" "}
+              <span className="text-muted-foreground">{deployed.join(", ")}</span>
             </>
           ) : (
             "No squadrons currently deployed — will seed the global config only."
           )}
-        </p>
+        </CardDescription>
         {/* Honesty caveat. A profile has ~420 constants but only the ~160 backed
             by DynamicConfig can change at runtime; the rest are compiled in. The
             picker would otherwise imply a complete switch and deliver a partial
             one. Pre-built images bake the conservative profile, so the residue
             always errs safe. See ROADMAP "Profile switching is only 38% complete". */}
-        <p className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-2xs leading-relaxed text-amber-200/80">
-          Applies the live risk parameters — sizes, stops, targets, entry limits and strategy
-          toggles. Some structural values are fixed when the engine is built and do not change with
-          the profile, so this shifts most of the risk posture rather than all of it. Pre-built
-          images ship the conservative baseline, so anything not covered stays on the cautious side.
-        </p>
-      </div>
-      {notice && (
-        <div
-          className={`text-xs font-mono rounded-lg px-3 py-2 ${notice.kind === "ok" ? "bg-emerald-950/50 text-emerald-300" : "bg-red-950/50 text-red-300"}`}
-        >
-          {notice.text}
-        </div>
-      )}
-      {profiles ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {Object.entries(profiles).map(([name, p]) => (
-            <div
-              key={name}
-              className={`border rounded-lg p-4 flex flex-col gap-2 bg-surface-inset transition-colors ${PROFILE_ACCENTS[name] ?? "border-surface-border"}`}
-            >
-              <div className="text-sm font-mono text-gray-100">
-                {p.label}
-                {name === "conservative" && (
-                  <span className="ml-2 text-3xs text-emerald-400">RECOMMENDED START</span>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 flex-1">{p.description}</p>
-              <ul className="text-2xs font-mono text-gray-400 space-y-0.5">
-                {PROFILE_HIGHLIGHTS.map((h) =>
-                  h.key in p.values ? (
-                    <li key={h.key} className="flex justify-between">
-                      <span className="text-gray-600">{h.label}</span>
-                      <span>{h.fmt ? h.fmt(p.values[h.key]) : String(p.values[h.key])}</span>
-                    </li>
-                  ) : null,
-                )}
-              </ul>
-              <button
-                className={btnCls("ghost") + " mt-1"}
-                disabled={busy !== null}
-                onClick={() => apply(name)}
-              >
-                {busy === name ? "Applying…" : `Apply ${p.label}`}
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-xs text-gray-600 font-mono">Loading profiles…</div>
-      )}
-      {confirmDialog}
-    </div>
+        <Alert variant={"warning"} className="text-xs">
+          <AlertDescription>
+            Applies the live risk parameters — sizes, stops, targets, entry limits and strategy
+            toggles. Some structural values are fixed when the engine is built and do not change
+            with the profile, so this shifts most of the risk posture rather than all of it.
+            Pre-built images ship the conservative baseline, so anything not covered stays on the
+            cautious side.
+          </AlertDescription>
+        </Alert>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {notice && (
+          <Alert
+            variant={
+              notice.kind === "ok" ? "success" : notice.kind === "err" ? "destructive" : "default"
+            }
+            className="text-xs"
+          >
+            <AlertDescription>{notice.text}</AlertDescription>
+          </Alert>
+        )}
+        {profiles ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {Object.entries(profiles).map(([name, p]) => (
+              <Card key={name} size="sm">
+                <CardHeader>
+                  <CardTitle className="text-sm text-muted-foreground">
+                    {p.label}
+                    {name === "conservative" && (
+                      <Badge variant="success" className="ml-2 text-xs text-success">
+                        Recommended start
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground flex-1">
+                    {p.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="text-2xs text-muted-foreground space-y-0.5">
+                    {PROFILE_HIGHLIGHTS.map((h) =>
+                      h.key in p.values ? (
+                        <li key={h.key} className="flex justify-between">
+                          <span className="text-muted-foreground">{h.label}</span>
+                          <span className="font-mono tabular-nums">
+                            {h.fmt ? h.fmt(p.values[h.key]) : String(p.values[h.key])}
+                          </span>
+                        </li>
+                      ) : null,
+                    )}
+                  </ul>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    variant="outline"
+                    className="mt-1"
+                    disabled={busy !== null}
+                    onClick={() => apply(name)}
+                  >
+                    {busy === name && <Spinner data-icon="inline-start" />}
+                    {busy === name ? "Applying…" : `Apply ${p.label}`}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground ">Loading profiles…</div>
+        )}
+        {confirmDialog}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1744,15 +1796,19 @@ function GlobalConfigPanel() {
   return (
     <>
       {sections.map((g) => (
-        <div key={g.group} className="card p-4 space-y-3">
-          <div>
-            <h3 className="text-sm font-mono text-gray-200">{g.title}</h3>
-            <p className="text-2xs text-gray-500 mt-1 leading-relaxed">{g.blurb}</p>
-          </div>
-          {g.fields.map((f) => (
-            <AdvancedRow key={f.key} field={f} config={config} onPatch={patch} disabled={false} />
-          ))}
-        </div>
+        <Card key={g.group} className="">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-foreground">{g.title}</CardTitle>
+            <CardDescription className="text-2xs text-muted-foreground mt-1 leading-relaxed">
+              {g.blurb}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {g.fields.map((f) => (
+              <AdvancedRow key={f.key} field={f} config={config} onPatch={patch} disabled={false} />
+            ))}
+          </CardContent>
+        </Card>
       ))}
     </>
   );
@@ -1794,94 +1850,109 @@ function AutonomyPanel({ onAuthError }: { onAuthError: () => void }) {
   };
 
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-5 space-y-4">
-      <div className="flex items-start justify-between gap-3">
+    <Card>
+      <CardHeader className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-mono text-gray-200">🤖 AI Autonomy</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <CardTitle className="text-sm font-medium text-foreground">AI autonomy</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-0.5">
             How much control the LLM Advisor has over live config. Changes apply immediately — no
             restart. Every AI action is logged and TTL-bound; schema bounds are enforced at every
             tier.
-          </p>
+          </CardDescription>
         </div>
         {state && (
-          <button
-            onClick={() => update({ kill_switch: !state.kill_switch })}
-            disabled={busy}
-            className={btnCls(state.kill_switch ? "primary" : "danger") + " shrink-0"}
-            title="Hard stop: no auto-applies at any tier; proposals still queue"
-          >
-            {state.kill_switch ? "▶ Resume autonomy" : "⛔ Kill switch"}
-          </button>
-        )}
-      </div>
-
-      {!state ? (
-        <p className="text-xs text-gray-600 font-mono">Loading…</p>
-      ) : (
-        <>
-          {state.kill_switch && (
-            <div className="text-xs font-mono rounded-lg px-3 py-2 bg-rose-500/10 border border-rose-500/30 text-rose-300">
-              ⛔ Kill switch engaged — all AI changes queue for human approval regardless of tier.
-            </div>
-          )}
-          {state.breaker_demoted && (
-            <div className="flex items-center justify-between gap-2 text-xs font-mono rounded-lg px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-300">
-              <span>
-                🧯 Circuit breaker tripped — autonomy demoted to Recommend after a P&L drawdown.
-                Review reverted changes before resetting.
-              </span>
-              <button
-                onClick={() => update({ reset_breaker: true })}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                onClick={() => update({ kill_switch: !state.kill_switch })}
                 disabled={busy}
-                className={btnCls("ghost") + " shrink-0"}
+                className={btnCls(state.kill_switch ? "primary" : "danger") + " shrink-0"}
               >
-                Reset breaker
-              </button>
-            </div>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {TIER_DEFS.map((t) => {
-              const active = state.tier === t.tier;
-              return (
-                <button
-                  key={t.tier}
-                  onClick={() => update({ tier: t.tier })}
-                  disabled={busy || active}
-                  className={[
-                    "text-left rounded-lg border px-3 py-2.5 transition-colors disabled:cursor-default",
-                    active
-                      ? "bg-indigo-500/15 border-indigo-500/50"
-                      : "bg-surface-well border-surface-border hover:border-gray-600",
-                  ].join(" ")}
-                >
-                  <p
-                    className={`text-xs font-mono ${active ? "text-indigo-300" : "text-gray-300"}`}
+                {busy && <Spinner data-icon="inline-start" />}
+                {state.kill_switch ? " Resume autonomy" : " Kill switch"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Hard stop: no auto-applies at any tier; proposals still queue
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!state ? (
+          <p className="text-xs text-muted-foreground ">Loading…</p>
+        ) : (
+          <>
+            {state.kill_switch && (
+              <Alert variant={"destructive"} className="text-xs">
+                <AlertDescription>
+                  Kill switch engaged — all AI changes queue for human approval regardless of tier.
+                </AlertDescription>
+              </Alert>
+            )}
+            {state.breaker_demoted && (
+              <Alert variant={"warning"} className="text-xs">
+                <AlertDescription>
+                  <span>
+                    Circuit breaker tripped — autonomy demoted to Recommend after a P&L drawdown.
+                    Review reverted changes before resetting.
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => update({ reset_breaker: true })}
+                    disabled={busy}
+                    className="shrink-0"
                   >
-                    {t.tier} · {t.name}
-                    {active ? " ✓" : ""}
-                  </p>
-                  <p className="text-2xs text-gray-500 mt-1 leading-snug">{t.blurb}</p>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-2xs text-gray-600 font-mono">
-            Guardrails: max {state.max_patches_per_hour} patch batch/h · ±
-            {Math.round(state.max_delta_pct * 100)}% per field (tier 2) · breaker: $
-            {state.breaker_drawdown_usdc.toFixed(0)} drawdown /{" "}
-            {Math.round(state.breaker_window_secs / 3600)}h window. Applies in both LIVE and GHOST
-            modes.
-          </p>
-        </>
-      )}
+                    {busy && <Spinner data-icon="inline-start" />}
+                    Reset breaker
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {TIER_DEFS.map((t) => {
+                const active = state.tier === t.tier;
+                return (
+                  <Button
+                    variant="outline"
+                    key={t.tier}
+                    onClick={() => update({ tier: t.tier })}
+                    disabled={busy || active}
+                    className={[
+                      "h-auto min-h-24 flex-col items-start whitespace-normal text-left",
+                      active
+                        ? "bg-primary/15 border-primary/50"
+                        : "bg-muted border-border hover:border-border",
+                    ].join(" ")}
+                  >
+                    {busy && <Spinner data-icon="inline-start" />}
+                    <p className={`text-xs ${active ? "text-primary" : "text-muted-foreground"}`}>
+                      {t.tier} · {t.name}
+                      {active ? " " : ""}
+                    </p>
+                    <p className="text-2xs text-muted-foreground mt-1 leading-snug">{t.blurb}</p>
+                  </Button>
+                );
+              })}
+            </div>
+            <p className="tabular-nums text-2xs text-muted-foreground ">
+              Guardrails: max {state.max_patches_per_hour} patch batch/h · ±
+              {Math.round(state.max_delta_pct * 100)}% per field (tier 2) · breaker: $
+              {state.breaker_drawdown_usdc.toFixed(0)} drawdown /{" "}
+              {Math.round(state.breaker_window_secs / 3600)}h window. Applies in both LIVE and GHOST
+              modes.
+            </p>
+          </>
+        )}
 
-      {error && (
-        <div className="text-xs font-mono rounded-lg px-3 py-2 bg-rose-500/10 border border-rose-500/30 text-rose-300">
-          ✗ {error}
-        </div>
-      )}
-    </div>
+        {error && (
+          <Alert variant={"destructive"} className="text-xs">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2005,7 +2076,7 @@ function MigrationPanel({ onAuthError }: { onAuthError: () => void }) {
       body: (
         <>
           <p>
-            This instance <span className="text-amber-400">stops trading now</span>: it refuses new
+            This instance <span className="text-warning">stops trading now</span>: it refuses new
             orders, cancels its resting orders and stands its squadrons down. It stays retired
             across restarts until you resume trading here.
           </p>
@@ -2014,14 +2085,14 @@ function MigrationPanel({ onAuthError }: { onAuthError: () => void }) {
             instance keeps their strategy labels and manages them once it is running from this
             backup.
           </p>
-          <p className="text-amber-400">
+          <p className="text-warning">
             {openNow === 0
               ? "This instance holds no open positions right now."
               : openNow === null
                 ? "This instance could not count its open positions. Until the new instance is running, no stop or exit can fire on any it holds."
                 : `Until then, no stop or exit can fire on the ${openNow} open position(s) this instance holds. Retire when it holds none, or accept that risk.`}
           </p>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Restore the backup on the new instance only after this one shows as retired, so two
             engines never trade the same wallet.
           </p>
@@ -2073,7 +2144,7 @@ function MigrationPanel({ onAuthError }: { onAuthError: () => void }) {
       body: (
         <>
           <p>The engine restarts and its squadrons come back.</p>
-          <p className="text-amber-400">
+          <p className="text-warning">
             Do not do this if a new instance is already running from this backup: two engines would
             trade the same wallet.
           </p>
@@ -2105,17 +2176,17 @@ function MigrationPanel({ onAuthError }: { onAuthError: () => void }) {
             {existingTrades === null ? (
               <>
                 This instance&apos;s ledger{" "}
-                <span className="text-amber-400">could not be counted</span>, so it may hold trades.
+                <span className="text-warning">could not be counted</span>, so it may hold trades.
               </>
             ) : (
               <>
                 This instance already has{" "}
-                <span className="text-amber-400">{existingTrades} trade(s)</span>.
+                <span className="text-warning">{existingTrades} trade(s)</span>.
               </>
             )}{" "}
             Restoring replaces its databases and models with the backup&apos;s.
           </p>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             The replaced files are kept on this instance under logs/migration/pre-restore-*.
           </p>
         </>
@@ -2168,7 +2239,7 @@ function MigrationPanel({ onAuthError }: { onAuthError: () => void }) {
             {staged.manifest.include_training_data ? " and training data" : ""} with the
             backup&apos;s, and trades from the restored ledger.
           </p>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Check that the old instance shows as retired first. The backup&apos;s credentials are
             merged in; this instance keeps its own Setup password.
           </p>
@@ -2209,187 +2280,209 @@ function MigrationPanel({ onAuthError }: { onAuthError: () => void }) {
   // answered, so it stays false while status is still loading.
   const staleBackup =
     !!latest && !!status && status.trades !== null && latest.manifest.trades < status.trades;
-  const messageCls =
-    message?.kind === "err"
-      ? "bg-rose-500/10 border-rose-500/30 text-rose-300"
-      : message?.kind === "ok"
-        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-        : "bg-indigo-500/10 border-indigo-500/30 text-indigo-300";
 
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-4 space-y-3">
+    <Card>
       {confirmDialog}
-      <div>
-        <h3 className="text-sm font-mono text-gray-200">🚚 Move to a New Instance</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-foreground">
+          Move to a new instance
+        </CardTitle>
+        <CardDescription className="text-xs text-muted-foreground mt-0.5">
           Upgrading means launching a new instance. On the old instance, retire it and download a
           backup of its ledger, open positions and GBoost models. On the new instance, restore that
           backup here. Credentials travel inside the backup, so there is no separate config bundle
           to import.
-        </p>
-      </div>
-
-      {!status ? (
-        <p className="text-xs font-mono text-gray-500">
-          {reachable ? "Loading…" : "Waiting for the engine…"}
-        </p>
-      ) : (
-        <>
-          <p className="text-xs font-mono text-gray-400">
-            This instance: {status.venue} · v{status.app_version} ·{" "}
-            {status.trades === null ? (
-              "ledger could not be counted"
-            ) : (
-              <>
-                {status.trades} trade(s) · {status.open_positions ?? "—"} open position(s)
-              </>
-            )}
-            {!reachable && " · engine restarting…"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!status ? (
+          <p className="text-xs text-muted-foreground">
+            {reachable ? "Loading…" : "Waiting for the engine…"}
           </p>
-          {status.counts_error && (
-            <p className="text-xs font-mono text-amber-400">Count failed: {status.counts_error}</p>
-          )}
+        ) : (
+          <>
+            <p className="tabular-nums text-xs text-muted-foreground">
+              This instance: {status.venue} · v{status.app_version} ·{" "}
+              {status.trades === null ? (
+                "ledger could not be counted"
+              ) : (
+                <>
+                  {status.trades} trade(s) · {status.open_positions ?? "—"} open position(s)
+                </>
+              )}
+              {!reachable && " · engine restarting…"}
+            </p>
+            {status.counts_error && (
+              <p className="text-xs text-warning">Count failed: {status.counts_error}</p>
+            )}
 
-          {st?.retired && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 bg-amber-500/10 border border-amber-500/30">
-              <p className="text-xs font-mono text-amber-300">
-                🛬 Retired for migration since {formatWhen(st.retired.retired_at)}: this instance
-                places no orders and runs no squadrons.
-              </p>
-              <button className={btnCls("ghost")} disabled={busy || building} onClick={resume}>
-                Resume trading here
-              </button>
-            </div>
-          )}
+            {st?.retired && (
+              <Alert variant={"warning"} className="text-xs">
+                <AlertDescription>
+                  <p className="text-xs text-warning">
+                    Retired for migration since {formatWhen(st.retired.retired_at)}: this instance
+                    places no orders and runs no squadrons.
+                  </p>
+                  <Button variant="outline" disabled={busy || building} onClick={resume}>
+                    {busy && <Spinner data-icon="inline-start" />}
+                    Resume trading here
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
 
-          <div className="space-y-2">
-            <p className="text-xs font-mono text-gray-300">1. On the old instance</p>
-            {building ? (
-              <p className="text-xs font-mono text-indigo-300">
-                ⏳ {MIGRATION_PHASES[phase ?? ""] ?? phase}
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-gray-400">
-                  <input
-                    type="checkbox"
-                    checked={includeTraining}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">1. On the old instance</p>
+              {building ? (
+                <p className="text-xs text-primary">{MIGRATION_PHASES[phase ?? ""] ?? phase}</p>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="include-training"
+
+                      checked={includeTraining}
+                      disabled={busy}
+                      onCheckedChange={(checked) => setIncludeTraining(checked === true)}
+                    />
+                    <FieldLabel htmlFor="include-training">
+                      Include GBoost training data (larger; the new instance keeps its training
+                      schedule)
+                    </FieldLabel>
+                  </Field>
+                  <Button
+                    variant="outline"
+                    className={btnCls(st?.retired ? "ghost" : "danger")}
                     disabled={busy}
-                    onChange={(e) => setIncludeTraining(e.target.checked)}
-                  />
-                  Include GBoost training data (larger; the new instance keeps its training
-                  schedule)
-                </label>
-                <button
-                  className={btnCls(st?.retired ? "ghost" : "danger")}
-                  disabled={busy}
-                  onClick={prepare}
-                >
-                  {st?.retired ? "↻ Rebuild backup" : "🛬 Retire and back up"}
-                </button>
-              </div>
-            )}
-            {phase === "failed" && st?.backup?.error && (
-              <p className="text-xs font-mono text-rose-300">✗ Backup failed: {st.backup.error}</p>
-            )}
-            {latest && !building && (
-              <div className="space-y-2">
-                <p className="text-xs font-mono text-gray-400">
-                  📦 {latest.archive_name} · {formatBytes(latest.archive_bytes)} · made{" "}
-                  {formatWhen(latest.manifest.created_at)} · {describeBackup(latest.manifest)}
-                </p>
-                {/* A backup holding less than the instance does is not a backup of
+                    onClick={prepare}
+                  >
+                    {busy && <Spinner data-icon="inline-start" />}
+                    {st?.retired ? " Rebuild backup" : " Retire and back up"}
+                  </Button>
+                </div>
+              )}
+              {phase === "failed" && st?.backup?.error && (
+                <p className="text-xs text-destructive"> Backup failed: {st.backup.error}</p>
+              )}
+              {latest && !building && (
+                <div className="space-y-2">
+                  <p className="tabular-nums text-xs text-muted-foreground">
+                    {latest.archive_name} · {formatBytes(latest.archive_bytes)} · made{" "}
+                    {formatWhen(latest.manifest.created_at)} · {describeBackup(latest.manifest)}
+                  </p>
+                  {/* A backup holding less than the instance does is not a backup of
                     this instance as it stands. It happens after a restore, where
                     the archive made before the restore describes a ledger that no
                     longer exists. Taking it to a new instance loses everything in
                     between, and the trade count alone reads as just another
                     detail, so say plainly what it means. */}
-                {staleBackup && (
-                  <p className="text-xs font-mono text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">
-                    ⚠ This backup holds {latest.manifest.trades} trade(s), but this instance has{" "}
-                    {status.trades}. It was made before the ledger you have now, so restoring it
-                    elsewhere would lose the difference. Build a new backup before migrating.
-                  </p>
-                )}
-                <button
-                  className={btnCls(staleBackup ? "ghost" : "primary")}
-                  disabled={busy}
-                  onClick={download}
-                >
-                  {staleBackup ? "⬇ Download it anyway" : "⬇ Download backup"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2 pt-2 border-t border-surface-border">
-            <p className="text-xs font-mono text-gray-300">2. On the new instance</p>
-            {st?.retired ? (
-              <p className="text-xs text-gray-500">
-                This instance is retired, so it takes no restore. Restore the backup on the new
-                instance.
-              </p>
-            ) : staged ? (
-              <div className="space-y-2">
-                <p className="text-xs font-mono text-gray-400">
-                  Staged: a {staged.manifest.venue} backup made{" "}
-                  {formatWhen(staged.manifest.created_at)} · {describeBackup(staged.manifest)}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button className={btnCls("danger")} disabled={busy} onClick={apply}>
-                    🔄 Apply and restart
-                  </button>
-                  <button className={btnCls("ghost")} disabled={busy} onClick={discard}>
-                    Discard
-                  </button>
+                  {staleBackup && (
+                    <Alert variant={"destructive"} className="text-xs">
+                      <AlertDescription>
+                        This backup holds {latest.manifest.trades} trade(s), but this instance has{" "}
+                        {status.trades}. It was made before the ledger you have now, so restoring it
+                        elsewhere would lose the difference. Build a new backup before migrating.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <Button
+                    variant="outline"
+                    className={btnCls(staleBackup ? "ghost" : "primary")}
+                    disabled={busy}
+                    onClick={download}
+                  >
+                    {busy && <Spinner data-icon="inline-start" />}
+                    {staleBackup ? " Download it anyway" : " Download backup"}
+                  </Button>
                 </div>
-              </div>
-            ) : (
-              <label className={btnCls("ghost") + " cursor-pointer inline-block"}>
-                {upload != null
-                  ? `⬆ Uploading ${Math.round(upload * 100)}%`
-                  : "⬆ Restore from backup…"}
-                <input
-                  type="file"
-                  accept=".gz,application/gzip"
-                  className="hidden"
-                  disabled={busy}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file) restoreFrom(file);
-                  }}
-                />
-              </label>
-            )}
-            {st?.last_restore && (
-              <p className="text-xs font-mono text-emerald-300">
-                ✓ Restored {formatWhen(st.last_restore.applied_at)}:{" "}
-                {st.last_restore.restored.length} item(s) from a v
-                {st.last_restore.source_app_version} backup made{" "}
-                {formatWhen(st.last_restore.source_created_at)}({st.last_restore.source_trades}{" "}
-                trade(s), {st.last_restore.source_open_positions} open position(s)). Replaced files
-                are kept in {st.last_restore.backup_dir}.
-              </p>
-            )}
-            {st?.restore_failed && (
-              <p className="text-xs font-mono text-rose-300">
-                ✗ The last restore failed: {st.restore_failed.error ?? "see the engine log"}
-                {st.restore_failed.replaced_files_kept_in
-                  ? ` (replaced files kept in ${st.restore_failed.replaced_files_kept_in})`
-                  : ""}
-              </p>
-            )}
-          </div>
-        </>
-      )}
+              )}
+            </div>
 
-      {message && (
-        <div className={`text-xs font-mono rounded-lg px-3 py-2 border ${messageCls}`}>
-          {message.text}
-        </div>
-      )}
-    </div>
+            <div className="space-y-2 pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground">2. On the new instance</p>
+              {st?.retired ? (
+                <p className="text-xs text-muted-foreground">
+                  This instance is retired, so it takes no restore. Restore the backup on the new
+                  instance.
+                </p>
+              ) : staged ? (
+                <div className="space-y-2">
+                  <p className="tabular-nums text-xs text-muted-foreground">
+                    Staged: a {staged.manifest.venue} backup made{" "}
+                    {formatWhen(staged.manifest.created_at)} · {describeBackup(staged.manifest)}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button variant="destructive" disabled={busy} onClick={apply}>
+                      {busy && <Spinner data-icon="inline-start" />}
+                      Apply and restart
+                    </Button>
+                    <Button variant="outline" disabled={busy} onClick={discard}>
+                      {busy && <Spinner data-icon="inline-start" />}
+                      Discard
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <label
+                  className={
+                    btnCls("ghost") +
+                    " focus-within:ring-2 focus-within:ring-ring cursor-pointer inline-block"
+                  }
+                >
+                  {upload != null
+                    ? ` Uploading ${Math.round(upload * 100)}%`
+                    : " Restore from backup…"}
+                  <input
+                    type="file"
+                    accept=".gz,application/gzip"
+                    className="sr-only"
+                    disabled={busy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) restoreFrom(file);
+                    }}
+                  />
+                </label>
+              )}
+              {st?.last_restore && (
+                <p className="tabular-nums text-xs text-success">
+                  Restored {formatWhen(st.last_restore.applied_at)}:{" "}
+                  {st.last_restore.restored.length} item(s) from a v
+                  {st.last_restore.source_app_version} backup made{" "}
+                  {formatWhen(st.last_restore.source_created_at)}({st.last_restore.source_trades}{" "}
+                  trade(s), {st.last_restore.source_open_positions} open position(s)). Replaced
+                  files are kept in {st.last_restore.backup_dir}.
+                </p>
+              )}
+              {st?.restore_failed && (
+                <p className="text-xs text-destructive">
+                  The last restore failed: {st.restore_failed.error ?? "see the engine log"}
+                  {st.restore_failed.replaced_files_kept_in
+                    ? ` (replaced files kept in ${st.restore_failed.replaced_files_kept_in})`
+                    : ""}
+                </p>
+              )}
+            </div>
+          </>
+        )}
+
+        {message && (
+          <Alert
+            variant={
+              message?.kind === "err"
+                ? "destructive"
+                : message?.kind === "ok"
+                  ? "success"
+                  : "default"
+            }
+          >
+            {message.text}
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2566,7 +2659,13 @@ export default function SetupPage() {
   };
 
   if (!status) {
-    return <div className="text-center text-gray-500 font-mono text-sm py-16">Loading setup…</div>;
+    return (
+      <div className="space-y-3">
+        <SectionHeader title="Setup" />
+        <span className="text-xs text-muted-foreground">Loading setup…</span>
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
   }
 
   // First-boot: wizard forces password creation AFTER credentials are entered?
@@ -2574,10 +2673,15 @@ export default function SetupPage() {
   if (!status.admin_set && !status.auth_disabled) {
     return (
       <div className="space-y-6">
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs font-mono text-amber-300">
-          ⚠️ First-boot setup — no admin password configured yet. Create one to secure this
-          instance.
-        </div>
+        <SectionHeader
+          title="Setup"
+          description="Secure this instance before entering credentials."
+        />
+        <Alert variant={"warning"} className="text-xs">
+          <AlertDescription>
+            First-boot setup — no admin password configured yet. Create one to secure this instance.
+          </AlertDescription>
+        </Alert>
         <PasswordCard
           mode="create"
           onDone={() => {
@@ -2591,14 +2695,20 @@ export default function SetupPage() {
 
   if (!authed) {
     return (
-      <PasswordCard
-        mode="login"
-        notice={authNotice}
-        onDone={() => {
-          setAuthNotice(null);
-          setAuthed(true);
-        }}
-      />
+      <div className="space-y-6">
+        <SectionHeader
+          title="Setup"
+          description="Unlock credential management for this instance."
+        />
+        <PasswordCard
+          mode="login"
+          notice={authNotice}
+          onDone={() => {
+            setAuthNotice(null);
+            setAuthed(true);
+          }}
+        />
+      </div>
     );
   }
 
@@ -2608,41 +2718,48 @@ export default function SetupPage() {
     // `pb-20` reserves room for the fixed status bar below, so the last control
     // on the page can still be reached and clicked while a notice is showing.
     <div className="space-y-6 pb-20">
+      <SectionHeader
+        title="Setup"
+        description="Manage credentials, signal sources and instance settings."
+      />
       {!status.venue_configured && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs font-mono text-amber-300">
-          ⚠️ Venue credentials not configured — DRADIS cannot trade until the{" "}
-          {VENUE_META[status.venue].missing} are set.
-        </div>
+        <Alert variant={"warning"} className="text-xs">
+          <AlertDescription>
+            Venue credentials not configured — DRADIS cannot trade until the{" "}
+            {VENUE_META[status.venue].missing} are set.
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-mono text-gray-200">⚙️ Setup — Credentials</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Venue: <span className="text-gray-300">{VENUE_META[status.venue].label}</span> · stored
-            in <span className="text-gray-300">data/secrets.env</span> · values are write-only
+          <h3 className="text-sm font-medium">Credentials</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Venue: <span className="text-muted-foreground">{VENUE_META[status.venue].label}</span> ·
+            stored in <span className="text-muted-foreground">data/secrets.env</span> · values are
+            write-only
           </p>
         </div>
         <div className="flex items-center gap-2">
           {status.auth_disabled ? (
-            <span className="text-3xs font-mono text-gray-600 border border-surface-border rounded-lg px-2 py-1.5">
+            <span className="text-xs text-muted-foreground border border-border rounded-lg px-2 py-1.5">
               admin gate off (DRADIS_SETUP_AUTH=off)
             </span>
           ) : (
             <>
-              <button onClick={() => setShowChangePw((v) => !v)} className={btnCls("ghost")}>
+              <Button variant="outline" onClick={() => setShowChangePw((v) => !v)}>
                 {showChangePw ? "Cancel" : "Change password"}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => {
                   clearAdminToken();
                   setAuthNotice(null);
                   setAuthed(false);
                 }}
-                className={btnCls("ghost")}
               >
                 Log out
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -2693,7 +2810,10 @@ export default function SetupPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center text-gray-500 font-mono text-sm py-8">Loading credentials…</div>
+        <div className="space-y-3">
+          <span className="text-xs text-muted-foreground">Loading credentials…</span>
+          <Skeleton className="h-32 w-full" />
+        </div>
       )}
 
       {creds && (
@@ -2712,96 +2832,106 @@ export default function SetupPage() {
       <AutonomyPanel onAuthError={sessionLost} />
 
       {/* ── Config bundle export / import (instance migration) ────────────── */}
-      <div className="bg-surface-card border border-surface-border rounded-xl p-4 space-y-3">
-        <div>
-          <h3 className="text-sm font-mono text-gray-200">📦 Config Bundle</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-foreground">Config bundle</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-0.5">
             Export this instance&apos;s configuration (venue and signal credentials, global and
             squadron configs) as a single bundle, and import it on another instance. Settings only:
             to move the ledger, open positions and GBoost models to a new instance, use Move to a
             New Instance below. The Setup password is not included; each instance keeps its own. The
             bundle contains secrets; store it safely.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className={btnCls("ghost")}
-            onClick={async () => {
-              try {
-                const blob = await exportBundle();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "dradis-config-bundle.json";
-                a.click();
-                URL.revokeObjectURL(url);
-                setNotice({ kind: "ok", text: "Bundle downloaded — treat it as a secret." });
-              } catch (e) {
-                setNotice({ kind: "err", text: e instanceof Error ? e.message : "Export failed" });
-              }
-            }}
-          >
-            ⬇ Export bundle
-          </button>
-          <label className={btnCls("ghost") + " cursor-pointer"}>
-            ⬆ Import bundle…
-            <input
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                const ok = await confirm({
-                  title: "Import this bundle?",
-                  tone: "danger",
-                  confirmLabel: "Import",
-                  body: (
-                    <>
-                      <p>
-                        Existing credentials and configs will be{" "}
-                        <span className="text-amber-400">overwritten</span>.
-                      </p>
-                      <p className="text-gray-500">
-                        The engine needs a restart afterwards for the changes to take effect.
-                      </p>
-                    </>
-                  ),
-                });
-                if (!ok) return;
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <CardFooter className="flex items-center gap-2">
+            <Button
+              variant="outline"
+
+              onClick={async () => {
                 try {
-                  const text = await file.text();
-                  const r = await importBundle(text);
-                  setNotice({
-                    kind: "ok",
-                    text: `Imported ${r.secrets_imported} secret(s), global config: ${r.dynamic_config_restored ? "yes" : "no"}, ${r.squadron_configs_restored} squadron config(s). Nothing to save — restart the engine to apply.`,
-                  });
-                  loadCreds();
-                  // Import changes configuration state, so refresh what reads it.
-                  //
-                  // `venue_configured` is computed server-side from the secrets
-                  // file, which the import has just written, so it flips true
-                  // the instant this call returns — before any restart. Without
-                  // these two lines nothing notices: this view keeps its stale
-                  // `status`, and the dashboard keeps showing "ENGINE IDLE —
-                  // venue credentials not configured" over an instance that is
-                  // fully configured. That banner is the first thing a customer
-                  // sees after a migration, and it says their import failed when
-                  // it did not.
-                  loadStatus();
-                  mutateAll(() => true);
-                } catch (err) {
+                  const blob = await exportBundle();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "dradis-config-bundle.json";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setNotice({ kind: "ok", text: "Bundle downloaded — treat it as a secret." });
+                } catch (e) {
                   setNotice({
                     kind: "err",
-                    text: err instanceof Error ? err.message : "Import failed",
+                    text: e instanceof Error ? e.message : "Export failed",
                   });
                 }
               }}
-            />
-          </label>
-        </div>
-      </div>
+            >
+              Export bundle
+            </Button>
+            <label
+              className={
+                btnCls("ghost") + " focus-within:ring-2 focus-within:ring-ring cursor-pointer"
+              }
+            >
+              Import bundle…
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  const ok = await confirm({
+                    title: "Import this bundle?",
+                    tone: "danger",
+                    confirmLabel: "Import",
+                    body: (
+                      <>
+                        <p>
+                          Existing credentials and configs will be{" "}
+                          <span className="text-warning">overwritten</span>.
+                        </p>
+                        <p className="text-muted-foreground">
+                          The engine needs a restart afterwards for the changes to take effect.
+                        </p>
+                      </>
+                    ),
+                  });
+                  if (!ok) return;
+                  try {
+                    const text = await file.text();
+                    const r = await importBundle(text);
+                    setNotice({
+                      kind: "ok",
+                      text: `Imported ${r.secrets_imported} secret(s), global config: ${r.dynamic_config_restored ? "yes" : "no"}, ${r.squadron_configs_restored} squadron config(s). Nothing to save — restart the engine to apply.`,
+                    });
+                    loadCreds();
+                    // Import changes configuration state, so refresh what reads it.
+                    //
+                    // `venue_configured` is computed server-side from the secrets
+                    // file, which the import has just written, so it flips true
+                    // the instant this call returns — before any restart. Without
+                    // these two lines nothing notices: this view keeps its stale
+                    // `status`, and the dashboard keeps showing "ENGINE IDLE —
+                    // venue credentials not configured" over an instance that is
+                    // fully configured. That banner is the first thing a customer
+                    // sees after a migration, and it says their import failed when
+                    // it did not.
+                    loadStatus();
+                    mutateAll(() => true);
+                  } catch (err) {
+                    setNotice({
+                      kind: "err",
+                      text: err instanceof Error ? err.message : "Import failed",
+                    });
+                  }
+                }}
+              />
+            </label>
+          </CardFooter>
+        </CardContent>
+      </Card>
 
       <MigrationPanel onAuthError={sessionLost} />
 
@@ -2811,46 +2941,50 @@ export default function SetupPage() {
           rejected — on a Marketplace product. Both surfaces read the same
           `edition` so they can never disagree with each other. */}
       {status.edition === "marketplace" ? (
-        <div className="bg-surface-card border border-surface-border rounded-xl p-4 space-y-2">
-          <h3 className="text-sm font-mono text-gray-200">🛟 Support</h3>
-          <p className="text-xs text-gray-500">
-            Include your instance ID and what you were doing — the form collects what is needed to
-            diagnose a deployment.{" "}
-            <span className="text-gray-400">
-              Support will never ask for your wallet private key, seed phrase or API secrets.
-            </span>
-          </p>
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-foreground">Support</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">
+              Include your instance ID and what you were doing — the form collects what is needed to
+              diagnose a deployment.{" "}
+              <span className="text-muted-foreground">
+                Support will never ask for your wallet private key, seed phrase or API secrets.
+              </span>
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="flex flex-wrap items-center gap-2 pt-1">
             <a
               href="https://dradis.live/support"
               target="_blank"
               rel="noreferrer"
               className={btnCls("primary")}
             >
-              🛟 Contact support
+              Contact support
             </a>
             <a href="mailto:support@dradis.live" className={btnCls("ghost")}>
-              ✉️ support@dradis.live
+              support@dradis.live
             </a>
-          </div>
-        </div>
+          </CardFooter>
+        </Card>
       ) : (
-        <div className="bg-surface-card border border-surface-border rounded-xl p-4 space-y-2">
-          <h3 className="text-sm font-mono text-gray-200">🧪 Support</h3>
-          <p className="text-xs text-gray-500">
-            DRADIS is community-supported —{" "}
-            <span className="text-gray-400">individual support is not included</span>. For setup
-            help, ask an AI assistant (ChatGPT, Gemini, Claude): paste the README and your question
-            — they are very good at this.
-          </p>
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-foreground"> Support</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">
+              DRADIS is community-supported —{" "}
+              <span className="text-muted-foreground">individual support is not included</span>. For
+              setup help, ask an AI assistant (ChatGPT, Gemini, Claude): paste the README and your
+              question — they are very good at this.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="flex flex-wrap items-center gap-2 pt-1">
             <a
               href="https://github.com/mbordash/DRADIS/issues"
               target="_blank"
               rel="noreferrer"
               className={btnCls("ghost")}
             >
-              🐛 Report a bug (GitHub Issues)
+              Report a bug (GitHub Issues)
             </a>
             <a
               href="https://github.com/mbordash/DRADIS/discussions"
@@ -2858,31 +2992,31 @@ export default function SetupPage() {
               rel="noreferrer"
               className={btnCls("ghost")}
             >
-              💡 Request a feature (Discussions)
+              Request a feature (Discussions)
             </a>
-          </div>
-        </div>
+          </CardFooter>
+        </Card>
       )}
 
       {/* Sticky rather than parked at the bottom of a long page. The Setup view
           scrolls well past a screen once the Raptor panel is expanded, so an
           operator editing a field near the top had to scroll to the end to save,
           then scroll back. Sticky keeps the action next to the work. */}
-      <div className="sticky bottom-0 -mx-1 px-1 pb-1 pt-3 bg-gradient-to-t from-surface-page via-surface-page to-transparent">
-        <div className="flex items-center justify-end gap-2 border-t border-surface-border pt-4">
-          {dirty && (
-            <span className="mr-auto text-2xs font-mono text-amber-300/80">Unsaved changes</span>
-          )}
-          <button onClick={save} disabled={!dirty || saving} className={btnCls("primary")}>
+      <div className="sticky bottom-0 -mx-1 px-1 pb-1 pt-3 bg-linear-to-t from-background via-background to-transparent">
+        <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+          {dirty && <span className="mr-auto text-2xs text-warning/80">Unsaved changes</span>}
+          <Button variant="default" onClick={save} disabled={!dirty || saving}>
+            {saving && <Spinner data-icon="inline-start" />}
             {saving ? "Saving…" : "Save changes"}
-          </button>
-          <button onClick={restart} disabled={restarting} className={btnCls("danger")}>
-            {restarting ? "Restarting…" : "🔄 Restart engine to apply"}
-          </button>
+          </Button>
+          <Button variant="destructive" onClick={restart} disabled={restarting}>
+            {restarting && <Spinner data-icon="inline-start" />}
+            {restarting ? "Restarting…" : " Restart engine to apply"}
+          </Button>
         </div>
       </div>
 
-      <p className="text-2xs text-gray-600 font-mono">
+      <p className="text-2xs text-muted-foreground ">
         Saved credentials persist on the data volume and override container env on boot. Changes
         take effect after an engine restart (Docker respawns the container automatically).
       </p>
@@ -2906,28 +3040,35 @@ export default function SetupPage() {
           aria-live="polite"
           className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4 pointer-events-none"
         >
-          <div
-            className={`pointer-events-auto mx-auto max-w-3xl flex items-start gap-3 text-xs font-mono rounded-xl px-4 py-3 border shadow-lg backdrop-blur-sm ${
-              notice.kind === "ok"
-                ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-300"
-                : notice.kind === "err"
-                  ? "bg-rose-950/90 border-rose-500/40 text-rose-300"
-                  : "bg-indigo-950/90 border-indigo-500/40 text-indigo-300"
-            }`}
+          <Alert
+            variant={
+              notice.kind === "ok" ? "success" : notice.kind === "err" ? "destructive" : "default"
+            }
+            role="status"
+            className="pointer-events-auto mx-auto max-w-3xl bg-card shadow-lg"
           >
-            <span aria-hidden="true" className="mt-px">
-              {notice.kind === "ok" ? "✅" : notice.kind === "err" ? "⚠️" : "⏳"}
-            </span>
-            <span className="flex-1 whitespace-pre-wrap break-words">{notice.text}</span>
-            <button
-              type="button"
-              onClick={() => setNotice(null)}
-              aria-label="Dismiss status message"
-              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity px-1 leading-none"
-            >
-              ✕
-            </button>
-          </div>
+            <AlertDescription className="flex items-start gap-3">
+              <span aria-hidden="true" className="mt-px shrink-0">
+                {notice.kind === "ok" ? (
+                  <CheckCircleIcon className="size-4" />
+                ) : notice.kind === "err" ? (
+                  <WarningIcon className="size-4" />
+                ) : (
+                  <Spinner />
+                )}
+              </span>
+              <span className="flex-1 whitespace-pre-wrap wrap-break-word">{notice.text}</span>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setNotice(null)}
+                aria-label="Dismiss status message"
+                className="shrink-0 opacity-60 hover:opacity-100 transition-opacity px-1 leading-none"
+              >
+                <XIcon />
+              </Button>
+            </AlertDescription>
+          </Alert>
         </div>
       )}
     </div>

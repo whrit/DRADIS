@@ -32,6 +32,20 @@ import { useState } from "react";
 import { acknowledgeAlpha } from "@/lib/setupApi";
 import type { VenueId, Edition } from "@/lib/setupApi";
 import { REPO_URL } from "@/lib/demo";
+import {
+  ArrowLeftIcon,
+  GlobeIcon,
+  LifebuoyIcon,
+  ScrollIcon,
+  UsersIcon,
+  WarningIcon,
+} from "@phosphor-icons/react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Spinner } from "@/components/ui/spinner";
 
 /** Display name per venue — used in the header, the jurisdiction heading, and
  *  the confirmation checkbox, so a Kalshi build never labels itself "US". */
@@ -101,24 +115,29 @@ export default function AlphaGate({
     }
   };
 
-  const checkboxCls =
-    "mt-0.5 h-4 w-4 shrink-0 rounded border-gray-600 bg-surface-inset accent-amber-500 cursor-pointer";
-
   return (
-    <div className="fixed inset-0 z-100 overflow-y-auto bg-black/80 backdrop-blur-sm">
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl bg-surface-card border border-amber-500/40 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-mono text-gray-100">
-              DRADIS {VENUE_NAME[venue]}
-              {appVersion ? ` v${appVersion}` : ""} — read before proceeding
-            </h2>
-          </div>
+    <Dialog open>
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-dvh overflow-y-auto sm:max-w-2xl"
+        aria-describedby={undefined}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            DRADIS {VENUE_NAME[venue]}
+            {appVersion ? ` v${appVersion}` : ""} — read before proceeding
+          </DialogTitle>
+        </DialogHeader>
 
-          {/* ── Risk ─────────────────────────────────────────────────────── */}
-          <div className="bg-red-950/40 border border-red-500/30 rounded-xl p-4 space-y-2">
-            <h3 className="text-sm font-mono text-red-300">⚠️ Real-money risk</h3>
-            <ul className="text-xs text-red-200/90 space-y-1 list-disc pl-4">
+        {/* ── Risk ─────────────────────────────────────────────────────── */}
+        <Alert variant="destructive">
+          <WarningIcon />
+          <AlertTitle>Real-money risk</AlertTitle>
+          <AlertDescription>
+            <ul className="space-y-1 list-disc pl-4">
               <li>
                 DRADIS is <strong>trading automation software provided AS IS</strong>. It places
                 live orders with real funds and can <strong>lose some or all of the capital</strong>{" "}
@@ -146,42 +165,44 @@ export default function AlphaGate({
                 </li>
               )}
             </ul>
-          </div>
+          </AlertDescription>
+        </Alert>
 
-          {/* ── Legal status ─────────────────────────────────────────────── */}
-          <div className="bg-surface-inset border border-surface-border rounded-xl p-4 space-y-2">
-            <h3 className="text-sm font-mono text-gray-300">
-              📜 Software, not a financial service
-            </h3>
-            <ul className="text-xs text-gray-400 space-y-1 list-disc pl-4">
+        {/* ── Legal status ─────────────────────────────────────────────── */}
+        <Alert>
+          <ScrollIcon />
+          <AlertTitle>Software, not a financial service</AlertTitle>
+          <AlertDescription>
+            <ul className="space-y-1 list-disc pl-4">
               <li>
-                <strong className="text-gray-300">Non-custodial:</strong> DRADIS is self-hosted
+                <strong className="text-foreground">Non-custodial:</strong> DRADIS is self-hosted
                 software. Your private keys, API keys, and funds stay exclusively on this instance
                 under your control — the developers never store, access, or take custody of them.
               </li>
               <li>
-                <strong className="text-gray-300">Not a broker or adviser:</strong> this is a
+                <strong className="text-foreground">Not a broker or adviser:</strong> this is a
                 self-hosted automation tool. The developers are not acting as a broker, dealer,
                 investment adviser, or money transmitter, and no strategy signal or AI
                 recommendation produced by the engine constitutes financial or investment advice.
               </li>
               <li>
-                <strong className="text-gray-300">Limitation of liability:</strong> to the maximum
+                <strong className="text-foreground">Limitation of liability:</strong> to the maximum
                 extent permitted by law, the developers and contributors are not liable for any
                 direct, indirect, incidental, special, consequential, or punitive damages —
                 including loss of funds, profits, or data — arising from use of, or inability to
                 use, this software.
               </li>
             </ul>
-          </div>
+          </AlertDescription>
+        </Alert>
 
-          {/* ── Jurisdiction ─────────────────────────────────────────────── */}
-          <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-4 space-y-2">
-            <h3 className="text-sm font-mono text-amber-300">
-              🌍 Jurisdiction — {VENUE_NAME[venue]} venue
-            </h3>
+        {/* ── Jurisdiction ─────────────────────────────────────────────── */}
+        <Alert variant="warning">
+          <GlobeIcon />
+          <AlertTitle>Jurisdiction — {VENUE_NAME[venue]} venue</AlertTitle>
+          <AlertDescription>
             {venue === "intl" ? (
-              <p className="text-xs text-amber-200/90">
+              <p>
                 This build trades on Polymarket&apos;s <strong>international CLOB</strong>, which is{" "}
                 <strong>not available to US persons</strong>. If you are a US person, do not use
                 this venue — switch this instance to <strong>Polymarket US</strong> or{" "}
@@ -191,30 +212,33 @@ export default function AlphaGate({
                 project accepts none.
               </p>
             ) : (
-              <p className="text-xs text-amber-200/90">
+              <p>
                 This build trades on <strong>US-regulated venues</strong>. You remain responsible
                 for confirming that you are eligible to trade on these venues under the laws that
                 apply to you (state, residency, and account eligibility rules included).
               </p>
             )}
-          </div>
+          </AlertDescription>
+        </Alert>
 
-          {/* ── Support policy ───────────────────────────────────────────── */}
-          {/* A paid customer must be told how to get help, and by whom. The
+        {/* ── Support policy ───────────────────────────────────────────── */}
+        {/* A paid customer must be told how to get help, and by whom. The
               community wording below is honest for a free self-hosted build and
               would be unacceptable — quite possibly rejected — on a Marketplace
               product someone paid for. */}
-          {edition === "marketplace" ? (
-            <div className="bg-surface-inset border border-surface-border rounded-xl p-4 space-y-2">
-              <h3 className="text-sm font-mono text-gray-300">🛟 Support</h3>
-              <ul className="text-xs text-gray-400 space-y-1 list-disc pl-4">
+        {edition === "marketplace" ? (
+          <Alert>
+            <LifebuoyIcon />
+            <AlertTitle>Support</AlertTitle>
+            <AlertDescription>
+              <ul className="space-y-1 list-disc pl-4">
                 <li>
                   Get help at{" "}
                   <a
                     href="https://dradis.live/support"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-sky-400 hover:underline"
+                    className="text-primary hover:underline"
                   >
                     dradis.live/support
                   </a>{" "}
@@ -222,23 +246,26 @@ export default function AlphaGate({
                 </li>
                 <li>
                   Or email{" "}
-                  <a href="mailto:support@dradis.live" className="text-sky-400 hover:underline">
+                  <a href="mailto:support@dradis.live" className="text-primary hover:underline">
                     support@dradis.live
                   </a>
                   .
                 </li>
                 <li>
-                  <strong className="text-gray-300">
+                  <strong className="text-foreground">
                     Support will never ask for your wallet private key, seed phrase or API secrets.
                   </strong>{" "}
                   Anyone who does is not us.
                 </li>
               </ul>
-            </div>
-          ) : (
-            <div className="bg-surface-inset border border-surface-border rounded-xl p-4 space-y-2">
-              <h3 className="text-sm font-mono text-gray-300">🧪 Community-supported software</h3>
-              <ul className="text-xs text-gray-400 space-y-1 list-disc pl-4">
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <UsersIcon />
+            <AlertTitle>Community-supported software</AlertTitle>
+            <AlertDescription>
+              <ul className="space-y-1 list-disc pl-4">
                 <li>
                   Individual support is not included. For setup help, ask an AI assistant (ChatGPT,
                   Gemini, Claude) — paste in the README and your question; they are very good at
@@ -250,7 +277,7 @@ export default function AlphaGate({
                     href={`${REPO_URL}/issues`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-sky-400 hover:underline"
+                    className="text-primary hover:underline"
                   >
                     GitHub Issues
                   </a>{" "}
@@ -259,74 +286,77 @@ export default function AlphaGate({
                     href={`${REPO_URL}/discussions`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-sky-400 hover:underline"
+                    className="text-primary hover:underline"
                   >
                     GitHub Discussions
                   </a>
                   .
                 </li>
               </ul>
-            </div>
-          )}
+            </AlertDescription>
+          </Alert>
+        )}
 
-          {/* ── Acknowledgment ───────────────────────────────────────────── */}
-          <div className="space-y-2.5">
-            <label className="flex items-start gap-2.5 text-xs text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
-                className={checkboxCls}
-                checked={riskOk}
-                onChange={(e) => setRiskOk(e.target.checked)}
-              />
-              <span>
-                I understand this software trades real money and can lose it, is provided AS IS
-                without warranty or individual support, and I accept these risks and the
-                non-custodial, no-advice, and limitation-of-liability terms above.
-              </span>
-            </label>
-            <label className="flex items-start gap-2.5 text-xs text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
-                className={checkboxCls}
-                checked={jurisdictionOk}
-                onChange={(e) => setJurisdictionOk(e.target.checked)}
-              />
-              <span>
-                {venue === "intl"
-                  ? "I confirm I am legally permitted to trade on the international venue this build connects to, and I bear sole legal responsibility for that determination."
-                  : `I confirm I am eligible to trade on ${VENUE_NAME[venue]}, a US-regulated venue, under the laws that apply to me.`}
-              </span>
-            </label>
-          </div>
-
-          {error && (
-            <div className="text-xs font-mono text-red-300 bg-red-950/50 rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
-
-          <button
-            onClick={accept}
-            disabled={!riskOk || !jurisdictionOk || busy}
-            className="w-full py-2.5 rounded-lg font-mono text-sm bg-amber-500 text-black font-semibold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-amber-400 transition-colors"
-          >
-            {busy ? "Recording…" : "I acknowledge — continue to DRADIS"}
-          </button>
-
-          {onBack && !busy && (
-            <button
-              onClick={onBack}
-              className="w-full text-2xs font-mono text-gray-500 hover:text-gray-300 underline underline-offset-2"
+        {/* ── Acknowledgment ───────────────────────────────────────────── */}
+        <div className="space-y-2.5">
+          <Field orientation="horizontal" className="items-start">
+            <Checkbox
+              id="alpha-risk"
+              className="mt-0.5"
+              checked={riskOk}
+              onCheckedChange={(checked) => setRiskOk(checked === true)}
+            />
+            <FieldLabel htmlFor="alpha-risk" className="text-xs font-normal leading-relaxed">
+              I understand this software trades real money and can lose it, is provided AS IS
+              without warranty or individual support, and I accept these risks and the
+              non-custodial, no-advice, and limitation-of-liability terms above.
+            </FieldLabel>
+          </Field>
+          <Field orientation="horizontal" className="items-start">
+            <Checkbox
+              id="alpha-jurisdiction"
+              className="mt-0.5"
+              checked={jurisdictionOk}
+              onCheckedChange={(checked) => setJurisdictionOk(checked === true)}
+            />
+            <FieldLabel
+              htmlFor="alpha-jurisdiction"
+              className="text-xs font-normal leading-relaxed"
             >
-              ← Not {VENUE_NAME[venue]}? Choose a different trading venue
-            </button>
-          )}
-
-          <p className="text-3xs text-gray-600 font-mono text-center">
-            Your acknowledgment is recorded with a timestamp on this instance.
-          </p>
+              {venue === "intl"
+                ? "I confirm I am legally permitted to trade on the international venue this build connects to, and I bear sole legal responsibility for that determination."
+                : `I confirm I am eligible to trade on ${VENUE_NAME[venue]}, a US-regulated venue, under the laws that apply to me.`}
+            </FieldLabel>
+          </Field>
         </div>
-      </div>
-    </div>
+
+        {error && (
+          <Alert variant="destructive">
+            <WarningIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <Button onClick={accept} disabled={!riskOk || !jurisdictionOk || busy} className="w-full">
+          {busy && <Spinner data-icon="inline-start" />}
+          {busy ? "Recording…" : "I acknowledge — continue to DRADIS"}
+        </Button>
+
+        {onBack && !busy && (
+          <Button
+            variant="ghost"
+            onClick={onBack}
+            className="h-auto w-full whitespace-normal text-xs"
+          >
+            <ArrowLeftIcon data-icon="inline-start" />
+            Not {VENUE_NAME[venue]}? Choose a different trading venue
+          </Button>
+        )}
+
+        <p className="text-xs text-muted-foreground text-center">
+          Your acknowledgment is recorded with a timestamp on this instance.
+        </p>
+      </DialogContent>
+    </Dialog>
   );
 }

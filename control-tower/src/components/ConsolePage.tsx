@@ -28,6 +28,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { getLogs } from "@/lib/api";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { SectionHeader } from "@/components/shared";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type Level = "all" | "info" | "warn" | "error";
 
@@ -38,10 +47,10 @@ const LEVEL_TESTS: Record<Exclude<Level, "all">, (l: string) => boolean> = {
 };
 
 function lineColor(l: string): string {
-  if (l.includes(" ERROR ")) return "text-red-400";
-  if (l.includes(" WARN ")) return "text-amber-300";
-  if (l.includes(" DEBUG ")) return "text-gray-600";
-  return "text-gray-400";
+  if (l.includes(" ERROR ")) return "text-destructive";
+  if (l.includes(" WARN ")) return "text-warning";
+  if (l.includes(" DEBUG ")) return "text-muted-foreground/70";
+  return "text-muted-foreground";
 }
 
 export default function ConsolePage() {
@@ -62,8 +71,11 @@ export default function ConsolePage() {
 
   // Follow mode: keep the viewport pinned to the newest lines.
   useEffect(() => {
-    if (follow && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const viewport = scrollRef.current?.querySelector<HTMLDivElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (follow && viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, [lines, follow]);
 
@@ -77,81 +89,117 @@ export default function ConsolePage() {
     }
   };
 
-  const pill = (active: boolean) =>
-    `px-2.5 py-1 rounded-lg text-xs font-mono border transition-colors cursor-pointer ${
-      active
-        ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
-        : "bg-transparent border-surface-border text-gray-500 hover:text-gray-300"
-    }`;
-
   return (
-    <div className="space-y-4">
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-      <div className="card px-4 py-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-500 font-mono mr-1">Level:</span>
-        {(["all", "info", "warn", "error"] as Level[]).map((v) => (
-          <button key={v} className={pill(level === v)} onClick={() => setLevel(v)}>
-            {v.toUpperCase()}
-          </button>
-        ))}
-        <span className="text-xs text-gray-500 font-mono ml-4 mr-1">Tail:</span>
-        {[200, 500, 2000].map((n) => (
-          <button key={n} className={pill(tail === n)} onClick={() => setTail(n)}>
-            {n}
-          </button>
-        ))}
-        <label className="flex items-center gap-1.5 ml-4 text-xs font-mono text-gray-500 cursor-pointer">
-          <input
-            type="checkbox"
-            className="h-3.5 w-3.5 accent-indigo-500"
-            checked={follow}
-            onChange={(e) => setFollow(e.target.checked)}
-          />
-          Follow
-        </label>
-        <div className="flex-1" />
-        <button className={pill(false)} onClick={copyVisible}>
-          {copied ? "✓ Copied" : "⧉ Copy visible"}
-        </button>
-      </div>
+    <section className="space-y-4">
+      <SectionHeader title="Engine console" description="Recent engine logs · refreshes every 3s" />
+      <Card size="sm">
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-muted-foreground">Level</span>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            spacing={0}
+            value={level}
+            onValueChange={(value) => {
+              if (value) setLevel(value as Level);
+            }}
+            aria-label="Log level"
+          >
+            {(["all", "info", "warn", "error"] as Level[]).map((value) => (
+              <ToggleGroupItem key={value} value={value}>
+                {value === "all" ? "All" : value.toUpperCase()}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <span className="text-xs text-muted-foreground">Tail</span>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            spacing={0}
+            value={String(tail)}
+            onValueChange={(value) => {
+              if (value) setTail(Number(value));
+            }}
+            aria-label="Log tail size"
+          >
+            {[200, 500, 2000].map((n) => (
+              <ToggleGroupItem key={n} value={String(n)} className="font-mono tabular-nums">
+                {n}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Button
+            variant={follow ? "secondary" : "outline"}
+            aria-pressed={follow}
+            onClick={() => setFollow(!follow)}
+          >
+            Follow
+          </Button>
+          <Button variant="outline" className="sm:ml-auto" onClick={copyVisible}>
+            {copied ? (
+              <CheckIcon data-icon="inline-start" />
+            ) : (
+              <CopyIcon data-icon="inline-start" />
+            )}
+            {copied ? "Copied" : "Copy visible"}
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* ── Log pane ────────────────────────────────────────────────────────── */}
-      <div className="card overflow-hidden">
-        <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-indigo-400 text-base">🖥️</span>
-            <p className="label-muted">Engine Console</p>
-          </div>
-          <span className="text-xs font-mono text-gray-600">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Engine unreachable: {error instanceof Error ? error.message : String(error)}
+          </AlertDescription>
+        </Alert>
+      )}
+      <Card size="sm" className="gap-0 pb-0">
+        <CardContent className="flex items-center justify-between gap-3 pb-3">
+          <span className="text-xs text-muted-foreground">Recent output</span>
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
             {error
-              ? "engine unreachable"
+              ? "Engine unreachable"
               : isLoading
                 ? "Loading…"
                 : `${lines.length} lines · refreshes every 3s`}
           </span>
-        </div>
-        <div
+        </CardContent>
+        <ScrollArea
           ref={scrollRef}
           onWheel={() => setFollow(false)}
-          className="h-65vh overflow-y-auto bg-surface-page border-t border-surface-border px-4 py-3 font-mono text-2xs leading-relaxed"
+          className="h-144 border-t border-border bg-background"
         >
-          {lines.length === 0 && !isLoading ? (
-            <p className="text-gray-600">No log lines yet — the buffer fills as the engine runs.</p>
-          ) : (
-            lines.map((l, i) => (
-              <div key={i} className={`whitespace-pre-wrap break-all ${lineColor(l)}`}>
-                {l}
+          <div className="px-4 py-3">
+            {isLoading && lines.length === 0 ? (
+              <div className="space-y-2" aria-label="Loading engine logs" aria-busy="true">
+                {Array.from({ length: 12 }, (_, i) => (
+                  <Skeleton key={i} className="h-3 w-full" />
+                ))}
               </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <p className="text-2xs text-gray-600 font-mono">
+            ) : lines.length === 0 ? (
+              <Empty>
+                <EmptyDescription>
+                  No log lines yet — the buffer fills as the engine runs.
+                </EmptyDescription>
+              </Empty>
+            ) : (
+              lines.map((line, i) => (
+                <div
+                  key={i}
+                  className={`whitespace-pre-wrap break-all font-mono text-2xs leading-relaxed ${lineColor(line)}`}
+                >
+                  {line}
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
+      </Card>
+      <p className="text-xs leading-relaxed text-muted-foreground">
         Shows the engine&apos;s most recent in-memory log lines (up to 2,000). Sharing a snippet in
         a GitHub Issue? Use &ldquo;Copy visible&rdquo; with the ERROR filter — and skim it for
         market names or figures you&apos;d rather not post publicly.
       </p>
-    </div>
+    </section>
   );
 }
