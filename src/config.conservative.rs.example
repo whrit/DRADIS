@@ -1430,6 +1430,11 @@ pub const FAIRVALUE_PREFER_HOURLY: bool = true;
 pub const FAIRVALUE_VOL_SAMPLE_SECS: u64 = 15;
 pub const FAIRVALUE_VOL_WINDOW_SECS: u64 = 3600;
 pub const FAIRVALUE_MIN_VOL_SAMPLES: usize = 40;
+/// Seed FairValue's vol sampler from the last hour of Binance 1s closes when it
+/// first evaluates an asset, instead of re-sampling for ~585 s after every
+/// restart. Same spot data the live oracle reads; any fetch failure falls back
+/// to the ordinary warmup. Off until verified in a ghost session (2026-10-05).
+pub const FAIRVALUE_VOL_SEED_ENABLED: bool = false;
 /// Aggressive: longest debounce — demands sustained edge.
 pub const FAIRVALUE_ENTRY_PERSISTENCE_SECS: u64 = 90;
 pub const FAIRVALUE_SIGNAL_CONTINUITY_GAP_SECS: u64 = 20;
