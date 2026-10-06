@@ -83,3 +83,11 @@ debug = 1
 # Keep the debug info in a companion .dSYM on macOS rather than inflating the
 # executable. Ignored on Linux, where the AMI build carries it in the binary.
 split-debuginfo = "packed"
+# Cross-crate thin LTO and one codegen unit: more inlining across the tokio,
+# serde and sqlx boundaries the tick path crosses, at the cost of a slower
+# release build. Neither changes behaviour; promoted only on a measured win.
+lto = "thin"
+codegen-units = 1
+
+[target.'cfg(all(target_os = "linux", target_env = "musl"))'.dependencies]
+mimalloc = { version = "0.1.52", default-features = false }

@@ -23,6 +23,13 @@
 
 use anyhow::Result;
 
+// musl's mallocng trades speed for low overhead and hardening, and serializes
+// frees across threads; the multi-threaded tokio runtime allocates from every
+// worker. Production images are musl; macOS and glibc keep their allocator.
+#[cfg(all(target_os = "linux", target_env = "musl"))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(feature = "intl_clob")]
 use polymarket_client_sdk_v2::clob::types::request::BalanceAllowanceRequest;
 #[cfg(feature = "intl_clob")]
