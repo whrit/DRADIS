@@ -127,10 +127,30 @@ docker run -d --restart unless-stopped \
 | `tick_lateness` | How long after its due time each tick started: a stall elsewhere in the loop shows up here |
 | `tick_overruns` | Ticks whose body took longer than the tick interval |
 | `placement_single` / `placement_batch` | Order POST round trip (request start to parsed reply) of acknowledged attempts, plus `failed` and `timed_out` counts |
+| `resting_fill_event` | Resting (GTC/GTD) order placement → first fill event matched by order id (US and Kalshi fill feeds) |
+| `resting_fill_poll` | Resting order placement → holding found by the reconcile poll; an upper bound, never mixed with feed timings |
 
 Each histogram has a `count`, a `p50_ms`, a `p95_ms` and a `p99_ms`. It also has per-bucket `counts` aligned with `bucket_le_us`, which are inclusive upper bounds in microseconds plus one overflow bucket.
 
 - **Percentiles are bucket bounds, not exact values.** A `null` percentile with a non-zero `count` means the rank is above 60 s.
 - **Placement RTT is host-observed.** It is not the venue's matching time. Ghost orders never reach the venue, so they are not counted.
 - **Counters reset on restart.** To measure a change, snapshot before and after an equal-length run under a similar market and squadron mix, and compare the deltas of the bucket counts.
+
+### Slippage
+
+`slippage.cohorts` in the same response compares each live fill with the price the strategy evaluated. There is one cohort per strategy × buy/sell × maker/taker intent, where intent is post-only or not, not the venue's liquidity role.
+
+- **Units:** signed adverse bps, so positive costs money and negative is price improvement. `adverse_usd` totals the dollars.
+- **What counts as measured:** only fills whose price the venue reported. Polymarket International reports matched amounts and Kalshi reports an average fill price; Polymarket US acknowledgements carry no execution price. Fills priced at the limit are counted in `unmeasured`, never as 0 bps.
+- **Ghost fills** are simulated at the strategy's price and are not recorded.
+
+Each measured or unmeasured live fill also writes a row to the `executions` table (`logs/<shard>-dradis.db`), with `intended_price`, `fill_price`, `price_source` and `order_id`, so slippage survives restarts and can be queried per strategy:
+
+```sql
+SELECT strategy, action, COUNT(*),
+       AVG((CAST(fill_price AS REAL) - CAST(intended_price AS REAL))
+           * CASE action WHEN 'buy' THEN 1 ELSE -1 END
+           / CAST(intended_price AS REAL) * 10000) AS avg_adverse_bps
+FROM executions WHERE price_source = 'venue' GROUP BY 1, 2;
+```
 

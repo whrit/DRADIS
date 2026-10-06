@@ -342,6 +342,30 @@ pub(crate) async fn init_schema(pool: &SqlitePool) -> Result<()> {
         )"
     ).execute(pool).await?;
 
+    // executions: one row per live order fill, recorded where the venue's
+    // answer arrives. `trades` is a round-trip ledger and `entries` a position
+    // ledger, so neither can say what a single order intended and got.
+    // `intended_price` is what the strategy evaluated; `fill_price` is
+    // trustworthy only when `price_source = 'venue'`.
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS executions (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts             TEXT    NOT NULL,
+            session_id     TEXT    NOT NULL,
+            venue          TEXT    NOT NULL,
+            strategy       TEXT    NOT NULL,
+            token_id       TEXT    NOT NULL,
+            market         TEXT    NOT NULL,
+            action         TEXT    NOT NULL,
+            post_only      INTEGER NOT NULL,
+            intended_price TEXT    NOT NULL,
+            fill_price     TEXT    NOT NULL,
+            shares         TEXT    NOT NULL,
+            price_source   TEXT    NOT NULL,
+            order_id       TEXT    NOT NULL
+        )"
+    ).execute(pool).await?;
+
     // entry_signals: the signal feature-vector captured at the moment of each entry.
     // Persisted so win/loss outcomes (trades table) can be correlated with the entry
     // conditions that produced them — the data foundation for tuning entry criteria.
@@ -2269,6 +2293,45 @@ pub async fn record_entry_db(
     .execute(pool)
     .await {
         error!("❌ DB entry write failed: {}", e);
+    }
+}
+
+/// An `executions` row; see the table comment in `init_schema`.
+pub struct ExecutionRow {
+    pub strategy: String,
+    pub token_id: String,
+    pub market: String,
+    pub buy: bool,
+    pub post_only: bool,
+    pub intended_price: Decimal,
+    pub fill_price: Decimal,
+    pub shares: Decimal,
+    pub price_source: &'static str,
+    pub order_id: String,
+}
+
+pub async fn record_execution_db(pool: &SqlitePool, scope: &TradeScope, row: &ExecutionRow) {
+    if let Err(e) = sqlx::query(
+        "INSERT INTO executions (ts, session_id, venue, strategy, token_id, market, action, post_only,
+                                 intended_price, fill_price, shares, price_source, order_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(current_session_id())
+    .bind(resolved_venue(scope))
+    .bind(&row.strategy)
+    .bind(&row.token_id)
+    .bind(&row.market)
+    .bind(if row.buy { "buy" } else { "sell" })
+    .bind(row.post_only)
+    .bind(row.intended_price.to_string())
+    .bind(row.fill_price.to_string())
+    .bind(row.shares.to_string())
+    .bind(row.price_source)
+    .bind(&row.order_id)
+    .execute(pool)
+    .await {
+        error!("❌ DB execution write failed: {}", e);
     }
 }
 
@@ -8243,5 +8306,26 @@ mod released_position_tests {
             ("ArbitrageStrategy".to_string(), "pending".to_string(), 1),
             ("FairValueStrategy".to_string(), "confirmed".to_string(), 0),
         ]);
+    }
+}
+
+#[cfg(test)]
+mod execution_row_tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    #[tokio::test]
+    async fn an_execution_row_lands_with_decimal_prices_intact() {
+        let pool = memory_pool_for_tests().await;
+        let row = ExecutionRow {
+            strategy: "FairValueStrategy".into(), token_id: "t1".into(), market: "m".into(),
+            buy: false, post_only: false, intended_price: dec!(0.6100), fill_price: dec!(0.6050),
+            shares: dec!(12.5), price_source: "venue", order_id: "0xabc".into(),
+        };
+        record_execution_db(&pool, &TradeScope::new("", "kalshi", None, None), &row).await;
+        let got: (String, String, String, String, i64) = sqlx::query_as(
+            "SELECT action, intended_price, fill_price, price_source, post_only FROM executions",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(got, ("sell".into(), "0.6100".into(), "0.6050".into(), "venue".into(), 0));
     }
 }

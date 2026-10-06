@@ -37,6 +37,7 @@ import { SectionHeader, Stat, TONE_TEXT, signTone } from "@/components/shared";
 import { cn } from "@/lib/utils";
 import ChunkBoundary from "@/components/ChunkBoundary";
 
+import ExecutionQualityCard from "@/components/ExecutionQualityCard";
 import LlmAdvisorCard from "@/components/LlmAdvisorCard";
 import SquadronsPanel from "@/components/SquadronsPanel";
 import SquadronDetailView from "@/components/SquadronDetailView";
@@ -787,6 +788,8 @@ export default function DashboardPage() {
           />
         </ChunkBoundary>
       )}
+
+      <ExecutionQualityCard />
 
       {/* Three cards, not four: an "Active Assets" card used to sit here
           showing `availableAssets.length`, which is the number of open SQLite

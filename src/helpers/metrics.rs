@@ -181,6 +181,76 @@ pub async fn record_entry(
     }
 }
 
+/// One order's execution as the venue reported it, against what the strategy
+/// evaluated.
+pub struct Execution<'a> {
+    pub strategy: &'a str,
+    pub token_id: &'a str,
+    pub market: &'a str,
+    pub buy: bool,
+    /// Post-only: the strategy intended to make, not take.
+    pub post_only: bool,
+    /// The price the strategy evaluated, before any venue limit offset.
+    pub intended_price: Decimal,
+    pub fill_price: Decimal,
+    pub shares: Decimal,
+    pub price_source: crate::venues::core::PriceSource,
+    pub order_id: &'a str,
+}
+
+/// Record a live execution: slippage aggregates now, an `executions` row in
+/// the background. Synchronous so it can sit inside the ack-handling closures
+/// where the fill price is first known. Ghost fills are simulated at the
+/// intended price and are not recorded.
+pub fn record_execution(scope: &TradeScope, e: &Execution) {
+    use crate::venues::core::PriceSource;
+    if scope.ghost || e.price_source == PriceSource::Simulated || e.shares <= Decimal::ZERO {
+        return;
+    }
+    crate::helpers::latency::record_slippage(
+        e.strategy, e.buy, e.post_only, e.intended_price, e.fill_price, e.shares,
+        e.price_source == PriceSource::Venue,
+    );
+    let Some(pool) = db::pool_for(&scope.shard) else { return };
+    let row = db::ExecutionRow {
+        strategy: e.strategy.to_string(),
+        token_id: e.token_id.to_string(),
+        market: e.market.to_string(),
+        buy: e.buy,
+        post_only: e.post_only,
+        intended_price: e.intended_price,
+        fill_price: e.fill_price,
+        shares: e.shares,
+        price_source: e.price_source.as_str(),
+        order_id: e.order_id.to_string(),
+    };
+    let scope = scope.clone();
+    tokio::spawn(async move { db::record_execution_db(&pool, &scope, &row).await });
+}
+
+/// [`record_execution`] for a venue-trait order: `params.price` is both the
+/// evaluated price and the limit sent.
+pub fn record_order_fill(
+    scope: &TradeScope,
+    strategy: &str,
+    params: &crate::state::OrderParams,
+    buy: bool,
+    fill: &crate::venues::core::Fill,
+) {
+    record_execution(scope, &Execution {
+        strategy,
+        token_id: params.token_id.as_str(),
+        market: &params.market_name,
+        buy,
+        post_only: params.post_only,
+        intended_price: params.price,
+        fill_price: fill.price,
+        shares: fill.filled,
+        price_source: fill.price_source,
+        order_id: &fill.order_id.0,
+    });
+}
+
 /// Captures the entry-time signal feature-vector and persists it to `entry_signals`,
 /// so trade outcomes can later be correlated with the conditions that produced them.
 ///
