@@ -33,6 +33,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 
+use crate::helpers::latency::{self, Placement, PlacementOutcome};
+
 use crate::venues::core::{
     Execution, Fill, MarketFacts, MarketId, OpenOrder, OrderId, OrderIntent, Position, Side,
     TimeInForce,
@@ -92,9 +94,11 @@ impl KalshiVenue {
         // The create-order response is flat, not `{"order": …}` — see
         // `types::order_from_response`. Deserialize in two steps so an
         // unexpected shape can still be shown in full.
-        let raw: serde_json::Value = self
-            .post_json("/portfolio/events/orders", &body)
-            .await?;
+        let sent = std::time::Instant::now();
+        let raw = self.post_json::<serde_json::Value>("/portfolio/events/orders", &body).await;
+        // Kalshi has no batch endpoint; each leg of `place_atomic` lands here.
+        latency::record_placement(Placement::Single, sent, PlacementOutcome::of(&raw));
+        let raw = raw?;
         let o = types::order_from_response(&raw);
         if o.order_id.is_empty() {
             tracing::warn!(

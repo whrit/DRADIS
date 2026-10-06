@@ -994,7 +994,8 @@ impl Squadron {
                     break;
                 }
                 // ── 3. Strategy evaluation tick ─────────────────────────────────
-                _ = ticker.tick() => {
+                due = ticker.tick() => {
+                    let _tick = crate::helpers::latency::TickGuard::start(due, ticker.period());
                     // Skip evaluation this tick if the market has changed — yield to arm 2.
                     if ctx.market_rx.has_changed().unwrap_or(false) { continue; }
 

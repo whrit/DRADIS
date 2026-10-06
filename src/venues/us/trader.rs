@@ -1348,7 +1348,7 @@ async fn trade_one_market(
     cag.update_state(&squadron_id, SquadronState::Patrolling);
 
     loop {
-        tokio::select! {
+        let due = tokio::select! {
             biased;
             _ = cancel.cancelled() => {
                 info!("US trader: cancelled — standing down");
@@ -1448,8 +1448,9 @@ async fn trade_one_market(
                 }
                 continue;
             }
-            _ = price_tick.tick() => {}
-        }
+            due = price_tick.tick() => due,
+        };
+        let _tick = crate::helpers::latency::TickGuard::start(due, price_tick.period());
         // Pulse the OS watchdog every tick so quiet markets (no actionable
         // signal for minutes) don't trip the 5-min silence kill-switch.
         touch_heartbeat(process_heartbeat_secs);

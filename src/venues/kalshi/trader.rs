@@ -1195,7 +1195,7 @@ async fn trade_one_market(
     cag.update_state(&squadron_id, SquadronState::Patrolling);
 
     loop {
-        tokio::select! {
+        let due = tokio::select! {
             biased;
             _ = cancel.cancelled() => {
                 info!("Kalshi trader: cancelled — standing down");
@@ -1287,8 +1287,9 @@ async fn trade_one_market(
                 }
                 continue;
             }
-            _ = price_tick.tick() => {}
-        }
+            due = price_tick.tick() => due,
+        };
+        let _tick = crate::helpers::latency::TickGuard::start(due, price_tick.period());
         touch_heartbeat(process_heartbeat_secs);
 
         match market_cfg.phase(Utc::now(), MARKET_RTB_WINDOW_SECS) {

@@ -28,8 +28,14 @@
 //!
 //! `run_latency_probe` is spawned once from `run_api_server`; `snapshot()` is
 //! read by the `GET /api/latency` handler.
+//!
+//! The same snapshot also carries execution timing measured where it happens
+//! (see [`TickGuard`] and [`record_placement`]): strategy-tick service time and
+//! scheduler lateness, and order-POST round trips. Those are process-lifetime
+//! histograms that reset on restart; compare two snapshots to get an interval.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -99,6 +105,8 @@ pub struct LatencySnapshot {
     pub p50_ms: Option<u64>,
     /// Number of successful samples currently in the window.
     pub samples: usize,
+    /// Execution timing measured on the trading path, not by the probe.
+    pub timing: ExecutionTiming,
 }
 
 /// Current probe state for the API handler.
@@ -116,7 +124,10 @@ pub fn snapshot() -> LatencySnapshot {
         sorted.sort_unstable();
         Some(sorted[sorted.len() / 2])
     };
-    LatencySnapshot { venue, ok: st.last_ok, probed: st.probed, last_ms, p50_ms, samples: st.samples.len() }
+    LatencySnapshot {
+        venue, ok: st.last_ok, probed: st.probed, last_ms, p50_ms, samples: st.samples.len(),
+        timing: timing_snapshot(),
+    }
 }
 
 fn record(sample_ms: Option<u64>) {
@@ -134,6 +145,188 @@ fn record(sample_ms: Option<u64>) {
             st.samples.push_back(ms);
         }
         None => st.last_ok = false,
+    }
+}
+
+// ── Execution timing ─────────────────────────────────────────────────────────
+//
+// Capture is one relaxed atomic add per sample: no lock, no allocation, so it
+// is always on and can neither slow nor gate trading. These are host-observed
+// times: placement RTT is request start to parsed response, not the venue's
+// matching-engine time.
+
+/// Inclusive bucket upper bounds in microseconds; one overflow bucket follows.
+const BOUNDS_US: [u64; 16] = [
+    100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000,
+    250_000, 500_000, 1_000_000, 5_000_000, 15_000_000, 60_000_000,
+];
+
+struct Histogram {
+    counts: [AtomicU64; BOUNDS_US.len() + 1],
+}
+
+/// A histogram as served by the API. Percentiles are the upper bound of the
+/// bucket the rank falls in, not interpolated values; `null` with a non-zero
+/// `count` means the rank is in the overflow bucket (over 60 s).
+#[derive(Serialize)]
+pub struct HistogramSnapshot {
+    pub count: u64,
+    pub p50_ms: Option<f64>,
+    pub p95_ms: Option<f64>,
+    pub p99_ms: Option<f64>,
+    /// Per-bucket counts, aligned with `ExecutionTiming::bucket_le_us` plus overflow.
+    pub counts: Vec<u64>,
+}
+
+impl Histogram {
+    const fn new() -> Self {
+        Self { counts: [const { AtomicU64::new(0) }; BOUNDS_US.len() + 1] }
+    }
+
+    fn record(&self, d: Duration) {
+        let us = u64::try_from(d.as_micros()).unwrap_or(u64::MAX);
+        self.counts[BOUNDS_US.partition_point(|&b| b < us)].fetch_add(1, Relaxed);
+    }
+
+    fn snapshot(&self) -> HistogramSnapshot {
+        let counts: Vec<u64> = self.counts.iter().map(|c| c.load(Relaxed)).collect();
+        let count: u64 = counts.iter().sum();
+        let pct = |q: f64| {
+            let rank = ((q * count as f64).ceil() as u64).max(1);
+            let mut seen = 0;
+            let bucket = counts.iter().position(|c| { seen += c; seen >= rank })?;
+            BOUNDS_US.get(bucket).map(|&b| b as f64 / 1000.0)
+        };
+        HistogramSnapshot { count, p50_ms: pct(0.50), p95_ms: pct(0.95), p99_ms: pct(0.99), counts }
+    }
+}
+
+struct PlacementStats {
+    acked: Histogram,
+    failed: AtomicU64,
+    timed_out: AtomicU64,
+}
+
+impl PlacementStats {
+    const fn new() -> Self {
+        Self { acked: Histogram::new(), failed: AtomicU64::new(0), timed_out: AtomicU64::new(0) }
+    }
+}
+
+static TICK_SERVICE: Histogram = Histogram::new();
+static TICK_LATENESS: Histogram = Histogram::new();
+static TICK_OVERRUNS: AtomicU64 = AtomicU64::new(0);
+static PLACE_SINGLE: PlacementStats = PlacementStats::new();
+static PLACE_BATCH: PlacementStats = PlacementStats::new();
+
+/// Times one strategy tick: lateness when created, service time when dropped.
+///
+/// Create it first thing in the tick arm, so the drop also covers every early
+/// `continue`, error return and cancellation of the tick body. Idle waiting for
+/// the next tick is never inside it.
+pub struct TickGuard {
+    started: Instant,
+    period: Duration,
+}
+
+impl TickGuard {
+    /// `scheduled` is the instant `Interval::tick` returned: when the tick was
+    /// due. With `MissedTickBehavior::Skip` that is the missed deadline, so a
+    /// stall shows up here as lateness rather than as a burst of ticks.
+    pub fn start(scheduled: tokio::time::Instant, period: Duration) -> Self {
+        let started = Instant::now();
+        TICK_LATENESS.record(started.saturating_duration_since(scheduled.into_std()));
+        Self { started, period }
+    }
+}
+
+impl Drop for TickGuard {
+    fn drop(&mut self) {
+        let service = self.started.elapsed();
+        TICK_SERVICE.record(service);
+        if service > self.period {
+            TICK_OVERRUNS.fetch_add(1, Relaxed);
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Placement {
+    /// One order per request.
+    Single,
+    /// A two-leg batch request.
+    Batch,
+}
+
+#[derive(Clone, Copy)]
+pub enum PlacementOutcome {
+    /// The venue answered success and the body parsed.
+    Acked,
+    /// Any error: a venue refusal, transport failure or unparseable reply.
+    Failed,
+    /// Our own deadline expired; the order may still have landed.
+    TimedOut,
+}
+
+impl PlacementOutcome {
+    /// Acked for `Ok`, Failed for `Err`.
+    pub fn of<T, E>(r: &Result<T, E>) -> Self {
+        if r.is_ok() { Self::Acked } else { Self::Failed }
+    }
+}
+
+/// Record one order POST attempt that started at `sent`. Only acknowledged
+/// attempts enter the RTT histogram; the others are counted.
+pub fn record_placement(kind: Placement, sent: Instant, outcome: PlacementOutcome) {
+    let stats = match kind {
+        Placement::Single => &PLACE_SINGLE,
+        Placement::Batch => &PLACE_BATCH,
+    };
+    match outcome {
+        PlacementOutcome::Acked => stats.acked.record(sent.elapsed()),
+        PlacementOutcome::Failed => { stats.failed.fetch_add(1, Relaxed); }
+        PlacementOutcome::TimedOut => { stats.timed_out.fetch_add(1, Relaxed); }
+    }
+}
+
+#[derive(Serialize)]
+pub struct PlacementSnapshot {
+    /// Send→ack round trips of acknowledged attempts.
+    pub acked: HistogramSnapshot,
+    pub failed: u64,
+    pub timed_out: u64,
+}
+
+/// Execution timing since process start.
+#[derive(Serialize)]
+pub struct ExecutionTiming {
+    pub bucket_le_us: &'static [u64],
+    /// Strategy-tick body duration, all squadrons of this process.
+    pub tick_service: HistogramSnapshot,
+    /// How long after its due time each tick started.
+    pub tick_lateness: HistogramSnapshot,
+    /// Ticks whose service time exceeded the tick interval.
+    pub tick_overruns: u64,
+    pub placement_single: PlacementSnapshot,
+    pub placement_batch: PlacementSnapshot,
+}
+
+fn placement_snapshot(s: &PlacementStats) -> PlacementSnapshot {
+    PlacementSnapshot {
+        acked: s.acked.snapshot(),
+        failed: s.failed.load(Relaxed),
+        timed_out: s.timed_out.load(Relaxed),
+    }
+}
+
+fn timing_snapshot() -> ExecutionTiming {
+    ExecutionTiming {
+        bucket_le_us: &BOUNDS_US,
+        tick_service: TICK_SERVICE.snapshot(),
+        tick_lateness: TICK_LATENESS.snapshot(),
+        tick_overruns: TICK_OVERRUNS.load(Relaxed),
+        placement_single: placement_snapshot(&PLACE_SINGLE),
+        placement_batch: placement_snapshot(&PLACE_BATCH),
     }
 }
 
@@ -232,5 +425,26 @@ mod tests {
 
         let snap = snapshot();
         assert_eq!(snap.samples, SAMPLE_CAP, "the window must hold exactly the cap");
+    }
+
+    #[test]
+    fn histogram_buckets_are_inclusive_and_percentiles_report_bucket_bounds() {
+        let h = Histogram::new();
+        let empty = h.snapshot();
+        assert_eq!((empty.count, empty.p50_ms), (0, None), "no samples is unknown, not zero");
+
+        // 100 µs is the first bucket's inclusive bound; 101 µs is the next one.
+        for _ in 0..90 { h.record(Duration::from_micros(100)); }
+        for _ in 0..9 { h.record(Duration::from_micros(101)); }
+        h.record(Duration::from_secs(61));
+        let s = h.snapshot();
+        assert_eq!(s.count, 100);
+        assert_eq!((s.counts[0], s.counts[1], s.counts[BOUNDS_US.len()]), (90, 9, 1));
+        assert_eq!(s.p50_ms, Some(0.1));
+        assert_eq!(s.p95_ms, Some(0.25), "rank 95 falls in the 101..=250 µs bucket");
+        assert_eq!(s.p99_ms, Some(0.25), "rank 99 is the last in-range sample");
+
+        h.record(Duration::from_secs(61));
+        assert_eq!(h.snapshot().p99_ms, None, "a rank in the overflow bucket has no finite bound");
     }
 }
