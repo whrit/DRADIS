@@ -107,6 +107,8 @@ pub struct LatencySnapshot {
     pub samples: usize,
     /// Execution timing measured on the trading path, not by the probe.
     pub timing: ExecutionTiming,
+    /// Live fill prices against the prices strategies evaluated.
+    pub slippage: SlippageReport,
 }
 
 /// Current probe state for the API handler.
@@ -127,6 +129,7 @@ pub fn snapshot() -> LatencySnapshot {
     LatencySnapshot {
         venue, ok: st.last_ok, probed: st.probed, last_ms, p50_ms, samples: st.samples.len(),
         timing: timing_snapshot(),
+        slippage: slippage_snapshot(),
     }
 }
 
@@ -190,15 +193,17 @@ impl Histogram {
 
     fn snapshot(&self) -> HistogramSnapshot {
         let counts: Vec<u64> = self.counts.iter().map(|c| c.load(Relaxed)).collect();
-        let count: u64 = counts.iter().sum();
-        let pct = |q: f64| {
-            let rank = ((q * count as f64).ceil() as u64).max(1);
-            let mut seen = 0;
-            let bucket = counts.iter().position(|c| { seen += c; seen >= rank })?;
-            BOUNDS_US.get(bucket).map(|&b| b as f64 / 1000.0)
-        };
-        HistogramSnapshot { count, p50_ms: pct(0.50), p95_ms: pct(0.95), p99_ms: pct(0.99), counts }
+        let pct = |q| rank_bucket(&counts, q).and_then(|i| BOUNDS_US.get(i)).map(|&b| b as f64 / 1000.0);
+        HistogramSnapshot { count: counts.iter().sum(), p50_ms: pct(0.50), p95_ms: pct(0.95), p99_ms: pct(0.99), counts }
     }
+}
+
+/// Index of the bucket holding the `q` quantile's rank, `None` when empty.
+fn rank_bucket(counts: &[u64], q: f64) -> Option<usize> {
+    let count: u64 = counts.iter().sum();
+    let rank = ((q * count as f64).ceil() as u64).max(1);
+    let mut seen = 0;
+    counts.iter().position(|c| { seen += c; seen >= rank })
 }
 
 struct PlacementStats {
@@ -217,6 +222,8 @@ static TICK_SERVICE: Histogram = Histogram::new();
 static TICK_LATENESS: Histogram = Histogram::new();
 static TICK_OVERRUNS: AtomicU64 = AtomicU64::new(0);
 static PLACE_SINGLE: PlacementStats = PlacementStats::new();
+static REST_FILL_EVENT: Histogram = Histogram::new();
+static REST_FILL_POLL: Histogram = Histogram::new();
 static PLACE_BATCH: PlacementStats = PlacementStats::new();
 
 /// Times one strategy tick: lateness when created, service time when dropped.
@@ -289,6 +296,127 @@ pub fn record_placement(kind: Placement, sent: Instant, outcome: PlacementOutcom
     }
 }
 
+/// How a resting order's fill was first seen.
+#[derive(Clone, Copy)]
+pub enum FillObserved {
+    /// A venue fill event matched to the order by its id.
+    Event,
+    /// A positions poll found the holding: an upper bound, not the fill time.
+    Poll,
+}
+
+/// Record placement → first observed fill for a resting order.
+pub fn record_resting_fill(placed: Instant, how: FillObserved) {
+    match how {
+        FillObserved::Event => REST_FILL_EVENT.record(placed.elapsed()),
+        FillObserved::Poll => REST_FILL_POLL.record(placed.elapsed()),
+    }
+}
+
+// ── Slippage ────────────────────────────────────────────────────────────────
+
+/// Signed adverse-slippage bucket upper bounds in bps, inclusive; the first
+/// bucket also takes everything below it, and one overflow bucket follows.
+/// Negative is price improvement.
+const SLIP_BOUNDS_BPS: [i64; 13] = [-1000, -500, -250, -100, -50, -10, 0, 10, 50, 100, 250, 500, 1000];
+
+struct SlipCohort {
+    strategy: String,
+    buy: bool,
+    maker: bool,
+    counts: [u64; SLIP_BOUNDS_BPS.len() + 1],
+    adverse_usd: rust_decimal::Decimal,
+    unmeasured: u64,
+}
+
+// ponytail: linear cohort lookup under one lock; fine at a few dozen
+// strategy × side × intent cohorts and one update per order.
+static SLIPPAGE: Mutex<Vec<SlipCohort>> = Mutex::new(Vec::new());
+
+/// Record one execution's slippage against the price the strategy evaluated.
+///
+/// Adverse movement is `fill − intended` for a buy and `intended − fill` for a
+/// sell, so positive always costs money. A fill whose price the venue did not
+/// report (`verified == false`) equals what was asked for by construction and
+/// is counted as unmeasured rather than as a perfect fill.
+pub fn record_slippage(
+    strategy: &str,
+    buy: bool,
+    maker: bool,
+    intended: rust_decimal::Decimal,
+    fill: rust_decimal::Decimal,
+    shares: rust_decimal::Decimal,
+    verified: bool,
+) {
+    let mut cohorts = SLIPPAGE.lock().unwrap_or_else(|e| e.into_inner());
+    let i = match cohorts.iter().position(|c| c.strategy == strategy && c.buy == buy && c.maker == maker) {
+        Some(i) => i,
+        None => {
+            cohorts.push(SlipCohort {
+                strategy: strategy.to_string(), buy, maker,
+                counts: [0; SLIP_BOUNDS_BPS.len() + 1],
+                adverse_usd: rust_decimal::Decimal::ZERO, unmeasured: 0,
+            });
+            cohorts.len() - 1
+        }
+    };
+    let c = &mut cohorts[i];
+    if !verified || intended <= rust_decimal::Decimal::ZERO {
+        c.unmeasured += 1;
+        return;
+    }
+    let adverse = if buy { fill - intended } else { intended - fill };
+    let bps = adverse / intended * rust_decimal::Decimal::from(10_000);
+    c.counts[SLIP_BOUNDS_BPS.partition_point(|&b| rust_decimal::Decimal::from(b) < bps)] += 1;
+    c.adverse_usd += adverse * shares;
+}
+
+#[derive(Serialize)]
+pub struct SlippageCohort {
+    pub strategy: String,
+    pub side: &'static str,
+    /// `maker` for post-only orders, else `taker`: what was intended, not the
+    /// liquidity role the venue assigned.
+    pub intent: &'static str,
+    /// Measured fills.
+    pub count: u64,
+    /// Bucket upper bounds; `null` with a non-zero count means above 1000 bps.
+    pub p50_bps: Option<i64>,
+    pub p95_bps: Option<i64>,
+    /// Aligned with `SlippageReport::bucket_le_bps` plus overflow.
+    pub counts: Vec<u64>,
+    /// Total adverse dollars over measured fills; negative is improvement.
+    pub adverse_usd: f64,
+    /// Fills priced at the limit because the venue reported no price.
+    pub unmeasured: u64,
+}
+
+#[derive(Serialize)]
+pub struct SlippageReport {
+    pub bucket_le_bps: &'static [i64],
+    pub cohorts: Vec<SlippageCohort>,
+}
+
+fn slippage_snapshot() -> SlippageReport {
+    use rust_decimal::prelude::ToPrimitive;
+    let cohorts = SLIPPAGE.lock().unwrap_or_else(|e| e.into_inner());
+    let cohorts = cohorts.iter().map(|c| {
+        let pct = |q| rank_bucket(&c.counts, q).and_then(|i| SLIP_BOUNDS_BPS.get(i)).copied();
+        SlippageCohort {
+            strategy: c.strategy.clone(),
+            side: if c.buy { "buy" } else { "sell" },
+            intent: if c.maker { "maker" } else { "taker" },
+            count: c.counts.iter().sum(),
+            p50_bps: pct(0.50),
+            p95_bps: pct(0.95),
+            counts: c.counts.to_vec(),
+            adverse_usd: c.adverse_usd.to_f64().unwrap_or(0.0),
+            unmeasured: c.unmeasured,
+        }
+    }).collect();
+    SlippageReport { bucket_le_bps: &SLIP_BOUNDS_BPS, cohorts }
+}
+
 #[derive(Serialize)]
 pub struct PlacementSnapshot {
     /// Send→ack round trips of acknowledged attempts.
@@ -309,6 +437,10 @@ pub struct ExecutionTiming {
     pub tick_overruns: u64,
     pub placement_single: PlacementSnapshot,
     pub placement_batch: PlacementSnapshot,
+    /// Resting order placement → first fill seen on the venue's fill feed.
+    pub resting_fill_event: HistogramSnapshot,
+    /// Resting order placement → holding found by a positions poll (upper bound).
+    pub resting_fill_poll: HistogramSnapshot,
 }
 
 fn placement_snapshot(s: &PlacementStats) -> PlacementSnapshot {
@@ -327,6 +459,8 @@ fn timing_snapshot() -> ExecutionTiming {
         tick_overruns: TICK_OVERRUNS.load(Relaxed),
         placement_single: placement_snapshot(&PLACE_SINGLE),
         placement_batch: placement_snapshot(&PLACE_BATCH),
+        resting_fill_event: REST_FILL_EVENT.snapshot(),
+        resting_fill_poll: REST_FILL_POLL.snapshot(),
     }
 }
 
@@ -446,5 +580,26 @@ mod tests {
 
         h.record(Duration::from_secs(61));
         assert_eq!(h.snapshot().p99_ms, None, "a rank in the overflow bucket has no finite bound");
+    }
+
+    #[test]
+    fn slippage_is_signed_adverse_and_limit_priced_fills_are_unmeasured() {
+        use rust_decimal_macros::dec;
+        let s = "slippage-sign-test";
+        // Buying 0.51 against an evaluated 0.50 costs 200 bps.
+        record_slippage(s, true, false, dec!(0.50), dec!(0.51), dec!(10), true);
+        // Selling 0.51 against an evaluated 0.50 gains 200 bps.
+        record_slippage(s, false, false, dec!(0.50), dec!(0.51), dec!(10), true);
+        // A limit-priced fill equals its intent by construction; measured, it
+        // would read as a perfect 0 bps and flatter the strategy.
+        record_slippage(s, true, false, dec!(0.50), dec!(0.50), dec!(10), false);
+
+        let r = slippage_snapshot();
+        let get = |side| r.cohorts.iter().find(|c| c.strategy == s && c.side == side).unwrap();
+        let (buy, sell) = (get("buy"), get("sell"));
+        assert_eq!((buy.count, buy.unmeasured, buy.p50_bps), (1, 1, Some(250)));
+        assert!((buy.adverse_usd - 0.10).abs() < 1e-9, "10 shares × 1¢ adverse");
+        assert_eq!((sell.count, sell.p50_bps), (1, Some(-100)), "−200 bps is in the −250..=−100 bucket");
+        assert!((sell.adverse_usd + 0.10).abs() < 1e-9, "improvement is negative");
     }
 }

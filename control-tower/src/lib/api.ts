@@ -129,6 +129,54 @@ export interface LatencySnapshot {
   last_ms: number | null;
   p50_ms: number | null;
   samples: number;
+  /** Optional so an engine predating these fields still renders the footer. */
+  timing?: ExecutionTiming;
+  slippage?: SlippageReport;
+}
+
+/** Bucketed histogram; percentiles are bucket upper bounds, null with count > 0 means >60 s. */
+export interface Histogram {
+  count: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+  counts: number[];
+}
+
+export interface PlacementStats {
+  acked: Histogram;
+  failed: number;
+  timed_out: number;
+}
+
+export interface ExecutionTiming {
+  bucket_le_us: number[];
+  tick_service: Histogram;
+  tick_lateness: Histogram;
+  tick_overruns: number;
+  placement_single: PlacementStats;
+  placement_batch: PlacementStats;
+  resting_fill_event: Histogram;
+  resting_fill_poll: Histogram;
+}
+
+export interface SlippageCohort {
+  strategy: string;
+  side: "buy" | "sell";
+  intent: "maker" | "taker";
+  count: number;
+  p50_bps: number | null;
+  p95_bps: number | null;
+  counts: number[];
+  /** Adverse dollars over measured fills; negative is price improvement. */
+  adverse_usd: number;
+  /** Fills priced at the limit because the venue reported no execution price. */
+  unmeasured: number;
+}
+
+export interface SlippageReport {
+  bucket_le_bps: number[];
+  cohorts: SlippageCohort[];
 }
 
 /** Rolling engine→venue round-trip latency (footer meter). */

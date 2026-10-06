@@ -129,6 +129,8 @@ pub struct Fill {
     pub filled: Decimal,
     /// Price at which the order was placed/filled.
     pub price: Decimal,
+    /// Whether `price` is what the venue reported executing at, or a stand-in.
+    pub price_source: PriceSource,
     /// Total fee charged for this fill, in dollars (not per contract).
     ///
     /// `Decimal::ZERO` when the venue does not report one. Kalshi's quadratic
@@ -136,6 +138,28 @@ pub struct Fill {
     /// contract — so it has to reach recorded P&L rather than being absorbed
     /// silently into the collateral balance.
     pub fee: Decimal,
+}
+
+/// Where a [`Fill`]'s price came from. Only `Venue` prices measure slippage;
+/// the others equal what was asked for by construction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PriceSource {
+    /// The venue's reported execution price (matched amounts or average fill).
+    Venue,
+    /// The order's limit or touch, used because the venue reported no price.
+    Limit,
+    /// A ghost-mode simulation.
+    Simulated,
+}
+
+impl PriceSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Venue => "venue",
+            Self::Limit => "limit",
+            Self::Simulated => "simulated",
+        }
+    }
 }
 
 /// A venue-neutral open position snapshot.

@@ -227,6 +227,10 @@ impl OrderLifecycle {
         for ord in snapshot {
             let filled = held.get(ord.market.as_str()).copied().unwrap_or(Decimal::ZERO) > Decimal::ZERO;
             if filled {
+                // Polls see the holding, not the fill: an upper bound.
+                crate::helpers::latency::record_resting_fill(
+                    ord.placed_at.into_std(), crate::helpers::latency::FillObserved::Poll,
+                );
                 confirm_guard(positions, &self.squadron_id, &ord.strategy, &ord.market).await;
                 continue; // resting done — drop from tracking
             }
@@ -406,6 +410,7 @@ impl OrderLifecycle {
             loop {
                 match rx.recv().await {
                     Ok(ev) => {
+                        lifecycle.observe_fill_event(&ev.order_id).await;
                         // Confirm the guard for whichever strategy holds this leg.
                         lifecycle.confirm_on_fill(&positions, &ev.market).await;
                     }
@@ -416,6 +421,17 @@ impl OrderLifecycle {
                 }
             }
         }))
+    }
+
+    /// Time a tracked resting order's first fill event, matched by order id.
+    /// Only the first event counts: `confirm_on_fill` then stops tracking the
+    /// order. An event for an order not (or no longer) tracked times nothing.
+    async fn observe_fill_event(&self, order_id: &OrderId) {
+        if let Some(o) = self.tracked.lock().await.iter().find(|o| &o.id == order_id) {
+            crate::helpers::latency::record_resting_fill(
+                o.placed_at.into_std(), crate::helpers::latency::FillObserved::Event,
+            );
+        }
     }
 
     /// Confirm every strategy guard holding `market` and drop the order from

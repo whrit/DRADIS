@@ -37,7 +37,7 @@ use crate::helpers::latency::{self, Placement, PlacementOutcome};
 
 use crate::venues::core::{
     Execution, Fill, MarketFacts, MarketId, OpenOrder, OrderId, OrderIntent, Position, Side,
-    TimeInForce,
+    PriceSource, TimeInForce,
 };
 
 use super::{split_market_id, types, KalshiVenue};
@@ -139,8 +139,8 @@ impl KalshiVenue {
         // field, and a corrupted entry price would poison every downstream
         // TP/SL calculation — keep the limit price and say so instead.
         let (_, is_yes) = split_market_id(intent.market.as_str());
-        let price = match o.avg_fill_price_for_leg(is_yes) {
-            Some(p) if (p - intent.price).abs() <= MAX_FILL_PRICE_DIVERGENCE => p,
+        let (price, price_source) = match o.avg_fill_price_for_leg(is_yes) {
+            Some(p) if (p - intent.price).abs() <= MAX_FILL_PRICE_DIVERGENCE => (p, PriceSource::Venue),
             Some(p) => {
                 tracing::warn!(
                     "⚠️ Kalshi avg fill ${:.4} diverges >{:.2} from limit ${:.4} on {} — \
@@ -148,9 +148,9 @@ impl KalshiVenue {
                     p, MAX_FILL_PRICE_DIVERGENCE, intent.price, intent.market.as_str(),
                     super::truncate(&raw.to_string(), 400)
                 );
-                intent.price
+                (intent.price, PriceSource::Limit)
             }
-            None => intent.price,
+            None => (intent.price, PriceSource::Limit),
         };
         // Kalshi reports the fee per contract; P&L needs the total.
         let fee_per_contract = types::fp(&o.average_fee_paid).unwrap_or_default();
@@ -166,6 +166,7 @@ impl KalshiVenue {
             market: intent.market.clone(),
             filled,
             price,
+            price_source,
             fee,
         })
     }

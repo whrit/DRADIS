@@ -1974,14 +1974,22 @@ impl Squadron {
                                 let mut exit_filled_shares: Option<Decimal> = None;
                                 if !ghosting {
                                     if let Err(e) = place_limit_order_filled(&trading_client, &nonce_manager, &signer, safe_address, eoa_address, vc, &tid, Side::Sell, shares, (params.price - config::SELL_PRICE_OFFSET).max(config::MIN_SELL_LIMIT_PRICE), target_yes_fee_bps as u16, params.order_type, params.post_only, 0, &shared_http).await
-                                        .map(|(_oid, making, taking)| {
+                                        .map(|(oid, making, taking)| {
                                             // SELL orientation: making = shares given, taking = USDC received.
                                             // Ratio is unit-invariant. Clamp to a valid binary price; anything
                                             // outside means an unexpected orientation → fall back below.
                                             exit_filled_shares = Some(making);
                                             if making > dec!(0) && taking > dec!(0) {
                                                 let p = taking / making;
-                                                if p > dec!(0) && p <= dec!(1) { exit_fill_price = Some(p); }
+                                                if p > dec!(0) && p <= dec!(1) {
+                                                    exit_fill_price = Some(p);
+                                                    metrics::record_execution(&scope, &metrics::Execution {
+                                                        strategy: &sn, token_id: tid.as_str(), market: &params.market_name,
+                                                        buy: false, post_only: params.post_only, intended_price: params.price,
+                                                        fill_price: p, shares: making,
+                                                        price_source: crate::venues::core::PriceSource::Venue, order_id: &oid,
+                                                    });
+                                                }
                                             }
                                             // Non-zero making/taking means this matched immediately,
                                             // i.e. we were the taker and owe the fee. A resting order
@@ -2361,7 +2369,17 @@ impl Squadron {
                                                 (Some(s), None)
                                             } else {
                                                 match place_limit_order_filled(&trading_client, &nonce_manager, &signer, safe_address, eoa_address, other_vc, &other_tid, Side::Sell, s, other_limit, other_fee_bps, crate::venues::core::TimeInForce::Fak, false, 0, &shared_http).await {
-                                                    Ok((_oid, making, taking)) => fak_exit::sell_fill(making, taking),
+                                                    Ok((oid, making, taking)) => {
+                                                        let (matched, venue_price) = fak_exit::sell_fill(making, taking);
+                                                        if let (Some(m), Some(p)) = (matched, venue_price) {
+                                                            metrics::record_execution(&scope, &metrics::Execution {
+                                                                strategy: &sn, token_id: other_tid.as_str(), market: &params.market_name,
+                                                                buy: false, post_only: false, intended_price: other_bid, fill_price: p, shares: m,
+                                                                price_source: crate::venues::core::PriceSource::Venue, order_id: &oid,
+                                                            });
+                                                        }
+                                                        (matched, venue_price)
+                                                    }
                                                     Err(e) => {
                                                         warn!("⚠️ PAIRED EXIT [{}]: sell of the other leg ({:.4} shares @ ${:.4}) failed: \"{}\"", sn, s, other_limit, e.to_string().chars().take(120).collect::<String>());
                                                         (None, None)
@@ -2961,7 +2979,7 @@ impl Squadron {
                                                         order_id: crate::venues::core::OrderId(leg_a_id),
                                                         market: params.token_id.clone(),
                                                         filled: params.shares,
-                                                        price: actual_entry_price, fee: Decimal::ZERO
+                                                        price: actual_entry_price, price_source: crate::venues::core::PriceSource::Limit, fee: Decimal::ZERO
                                                     },
                                                     &sn,
                                                     crate::venues::core::TimeInForce::Gtc,
@@ -2972,7 +2990,7 @@ impl Squadron {
                                                         order_id: crate::venues::core::OrderId(leg_b_id),
                                                         market: pp.token_id.clone(),
                                                         filled: pp.shares,
-                                                        price: actual_pair_entry_price, fee: Decimal::ZERO
+                                                        price: actual_pair_entry_price, price_source: crate::venues::core::PriceSource::Limit, fee: Decimal::ZERO
                                                     },
                                                     &sn,
                                                     crate::venues::core::TimeInForce::Gtc,
@@ -3048,6 +3066,14 @@ impl Squadron {
                                                     let p = making / taking;
                                                     if p > dec!(0) && p <= dec!(1) { Some(p) } else { None }
                                                 } else { None };
+                                                if let Some(p) = px {
+                                                    metrics::record_execution(&scope, &metrics::Execution {
+                                                        strategy: &sn, token_id: params.token_id.as_str(), market: &params.market_name,
+                                                        buy: true, post_only: params.post_only, intended_price: params.price,
+                                                        fill_price: p, shares: taking,
+                                                        price_source: crate::venues::core::PriceSource::Venue, order_id: &id,
+                                                    });
+                                                }
                                                 (id, px.unwrap_or(params.price))
                                             }
                                         };

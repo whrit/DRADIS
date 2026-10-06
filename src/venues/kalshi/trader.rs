@@ -61,7 +61,7 @@ use crate::squadron::{CryptoAsset, Squadron, SquadronConfig, SquadronRaptors, Sq
 use crate::state::{
     MarketConfig, MarketPhase, MarketSnapshot, OrderParams, Position, PositionMap, PriceState,
     StrategySignal, TradeScope, PositionKey};
-use crate::venues::core::{Execution, Fill, MarketId, OrderId, OrderIntent, Side};
+use crate::venues::core::{Execution, Fill, MarketId, OrderId, OrderIntent, PriceSource, Side};
 use crate::venues::lifecycle::{LifecycleConfig, OrderLifecycle};
 
 use super::{leg_id, types::KalshiMarket, ws, KalshiVenue};
@@ -1405,6 +1405,7 @@ async fn trade_one_market(
                     market: resting.params.token_id.clone(),
                     filled: pos.shares,
                     price: pos.avg_entry,
+                    price_source: PriceSource::Simulated,
                     fee: Decimal::ZERO,
                 };
                 record_entry(&squadron_id, &pool, &scope, &pk.strategy, &resting.params, &fill).await;
@@ -1758,6 +1759,7 @@ async fn dispatch_signal(
                     market: p.token_id.clone(),
                     filled: p.shares,
                     price: p.price,
+                    price_source: PriceSource::Simulated,
 // A simulated taker pays what a real one pays. This was ZERO, so every
                     // ghost taker entry cost one leg instead of two and ghost P&L was
                     // optimistic against live by the entry fee. A post-only order is exempt:
@@ -1779,6 +1781,8 @@ async fn dispatch_signal(
                 Ok([a, b]) => {
                     info!("✅ [{strategy_name}] entry pair: {} @ {:.4} | {} @ {:.4}",
                         a.order_id, a.price, b.order_id, b.price);
+                    metrics::record_order_fill(scope, strategy_name, params, true, &a);
+                    metrics::record_order_fill(scope, strategy_name, pp, true, &b);
                     record_guard(squadron_id, positions, strategy_name, params, Some(&pp.token_id), &a).await;
                     record_guard(squadron_id, positions, strategy_name, pp, Some(&params.token_id), &b).await;
                     lifecycle.track(&a, strategy_name, params.order_type, Some(pp.token_id.clone())).await;
@@ -2009,6 +2013,7 @@ async fn dispatch_single(
             market: params.token_id.clone(),
             filled: params.shares,
             price: params.price,
+            price_source: PriceSource::Simulated,
 // A simulated taker pays what a real one pays. This was ZERO, so every
             // ghost taker entry cost one leg instead of two and ghost P&L was
             // optimistic against live by the entry fee. A post-only order is exempt:
@@ -2038,6 +2043,7 @@ async fn dispatch_single(
             }
             info!("✅ [{strategy_name}] {side:?} {} @ {:.4} × {:.2} (order {})",
                 params.token_id, f.price, f.filled, f.order_id);
+            metrics::record_order_fill(scope, strategy_name, params, matches!(side, Side::Buy), &f);
             if matches!(side, Side::Buy) {
                 record_guard(squadron_id, positions, strategy_name, params, None, &f).await;
                 lifecycle.track(&f, strategy_name, params.order_type, None).await;
@@ -2540,6 +2546,7 @@ mod fill_accounting_tests {
             market: MarketId::new("KX-1#yes"),
             filled,
             price,
+            price_source: crate::venues::core::PriceSource::Venue,
             fee,
         }
     }

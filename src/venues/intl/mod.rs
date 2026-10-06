@@ -62,7 +62,7 @@ use crate::config;
 use crate::helpers::nonce::fetch_next_nonce;
 use crate::venues::core::{
     Execution, Fill, MarketFacts, MarketId, OpenOrder, OrderId, OrderIntent, Position, Side,
-    TimeInForce,
+    PriceSource, TimeInForce,
 };
 use polymarket_client_sdk_v2::clob::types::request::PriceRequest;
 
@@ -304,15 +304,16 @@ impl Execution for IntlClobVenue {
         // a valid binary price (0,1]; anything outside means the response orientation
         // was unexpected, so we fall back to the limit. Resting GTC/GTD orders match
         // nothing immediately (making/taking = 0) and also fall back to the limit.
-        let fill_price = if making_amount > dec!(0) && taking_amount > dec!(0) {
+        let venue_price = if making_amount > dec!(0) && taking_amount > dec!(0) {
             let p = match intent.side {
                 Side::Sell => taking_amount / making_amount,
                 Side::Buy  => making_amount / taking_amount,
             };
-            if p > dec!(0) && p <= dec!(1) { p } else { intent.price }
+            (p > dec!(0) && p <= dec!(1)).then_some(p)
         } else {
-            intent.price
+            None
         };
+        let fill_price = venue_price.unwrap_or(intent.price);
 
         // Fee on the same terms the price was derived: a non-zero making/taking
         // pair means the order matched immediately, so we were the taker. A
@@ -334,7 +335,9 @@ impl Execution for IntlClobVenue {
             order_id: OrderId(order_id),
             market: intent.market,
             filled: intent.quantity,
-            price: fill_price, fee
+            price: fill_price,
+            price_source: if venue_price.is_some() { PriceSource::Venue } else { PriceSource::Limit },
+            fee,
         })
     }
 
@@ -368,8 +371,8 @@ impl Execution for IntlClobVenue {
         .await?;
 
         Ok([
-            Fill { order_id: OrderId(id_a), market: a.market, filled: a.quantity, price: a.price, fee: Decimal::ZERO},
-            Fill { order_id: OrderId(id_b), market: b.market, filled: b.quantity, price: b.price, fee: Decimal::ZERO},
+            Fill { order_id: OrderId(id_a), market: a.market, filled: a.quantity, price: a.price, price_source: PriceSource::Limit, fee: Decimal::ZERO},
+            Fill { order_id: OrderId(id_b), market: b.market, filled: b.quantity, price: b.price, price_source: PriceSource::Limit, fee: Decimal::ZERO},
         ])
     }
 

@@ -52,7 +52,7 @@ use tracing::{debug, info, warn};
 
 use crate::venues::core::{
     Execution, Fill, FillStream, MarketFacts, MarketId, OpenOrder, OrderId, OrderIntent, Position,
-    Side, TimeInForce,
+    PriceSource, Side, TimeInForce,
 };
 
 use auth::UsAuth;
@@ -757,6 +757,8 @@ impl UsRetailVenue {
             market: intent.market.clone(),
             filled,
             price: intent.price,
+            // The ack carries no execution price; this is the limit.
+            price_source: PriceSource::Limit,
             fee: taker_fee_for(intent, filled),
         })
     }
@@ -841,6 +843,7 @@ impl Execution for UsRetailVenue {
                 market: intent.market.clone(),
                 filled,
                 price: intent.price,
+                price_source: PriceSource::Limit,
                 fee: taker_fee_for(intent, filled),
             }
         };
