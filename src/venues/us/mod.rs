@@ -43,6 +43,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use polymarket_us::PolymarketUsClient;
+
+use crate::helpers::latency::{self, Placement, PlacementOutcome};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -744,7 +746,10 @@ impl UsRetailVenue {
     /// POST a single prepared order and map the ack to a neutral `Fill`.
     async fn submit_order(&self, intent: &OrderIntent) -> Result<Fill> {
         let body = Self::build_order(intent)?;
-        let ack = self.client.orders().place(&body).await.context("order POST failed")?;
+        let sent = std::time::Instant::now();
+        let ack = self.client.orders().place(&body).await;
+        latency::record_placement(Placement::Single, sent, PlacementOutcome::of(&ack));
+        let ack = ack.context("order POST failed")?;
 
         let filled = resolve_filled(ack.filled_quantity, intent);
         Ok(Fill {
@@ -818,12 +823,10 @@ impl Execution for UsRetailVenue {
             orders: vec![Self::build_order(&a)?, Self::build_order(&b)?],
             atomic: true,
         };
-        let ack = self
-            .client
-            .orders()
-            .place_batch(&body)
-            .await
-            .context("batched order POST failed")?;
+        let sent = std::time::Instant::now();
+        let ack = self.client.orders().place_batch(&body).await;
+        latency::record_placement(Placement::Batch, sent, PlacementOutcome::of(&ack));
+        let ack = ack.context("batched order POST failed")?;
         if ack.orders.len() != 2 {
             bail!(
                 "US retail batched order: expected 2 acks, got {}",

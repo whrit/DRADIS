@@ -30,6 +30,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::time::timeout;
+use crate::helpers::latency::{self, Placement, PlacementOutcome};
 
 use polymarket_client_sdk_v2::clob::{Client as ClobClient};
 use polymarket_client_sdk_v2::auth::state::Authenticated;
@@ -307,17 +308,20 @@ pub async fn place_limit_order_filled(
         ).await?;
 
         // Hard 12-second timeout: prevents a TCP stall from freezing the tokio::select! arm.
+        let sent = std::time::Instant::now();
         let post_result = timeout(
             std::time::Duration::from_secs(12),
             client.post_order(signed_order),
         ).await;
         let post_result = match post_result {
             Err(_elapsed) => {
+                latency::record_placement(Placement::Single, sent, PlacementOutcome::TimedOut);
                 warn!("⚠️ post_order timed out after 12s (attempt {}) — treating as transient failure", attempt + 1);
                 return Err(anyhow::anyhow!("Order placement timed out after 12s"));
             }
             Ok(r) => r,
         };
+        latency::record_placement(Placement::Single, sent, PlacementOutcome::of(&post_result));
         match post_result {
             Ok(resp) => return Ok((resp.order_id, resp.making_amount, resp.taking_amount)),
             Err(e) => {
@@ -493,6 +497,7 @@ pub async fn place_limit_orders_atomic(
         ).await?;
 
         // Slightly longer timeout than single-order to account for batch validation.
+        let sent = std::time::Instant::now();
         let post_result = timeout(
             std::time::Duration::from_secs(15),
             client.post_orders(vec![order_a, order_b]),
@@ -500,11 +505,13 @@ pub async fn place_limit_orders_atomic(
 
         let post_result = match post_result {
             Err(_elapsed) => {
+                latency::record_placement(Placement::Batch, sent, PlacementOutcome::TimedOut);
                 warn!("⚠️ post_orders (atomic) timed out after 15s (attempt {})", attempt + 1);
                 return Err(anyhow::anyhow!("Atomic order placement timed out after 15s"));
             }
             Ok(r) => r,
         };
+        latency::record_placement(Placement::Batch, sent, PlacementOutcome::of(&post_result));
 
         match post_result {
             Ok(resps) => {
