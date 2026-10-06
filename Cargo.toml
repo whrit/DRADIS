@@ -83,3 +83,11 @@ debug = 1
 # Keep the debug info in a companion .dSYM on macOS rather than inflating the
 # executable. Ignored on Linux, where the AMI build carries it in the binary.
 split-debuginfo = "packed"
+# Cross-crate thin LTO: inlining across the tokio, serde and sqlx boundaries
+# the tick path crosses. Does not change behaviour. Measured 2026-10-05 on
+# musl, 4 CPUs: build 626 s → 920 s (1.47×), same peak RAM. `codegen-units = 1`
+# on top took 1133 s (1.81×) and +30% RAM, over the 1.5× build budget.
+lto = "thin"
+
+[target.'cfg(all(target_os = "linux", target_env = "musl"))'.dependencies]
+mimalloc = { version = "0.1.52", default-features = false }
